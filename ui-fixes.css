@@ -1,0 +1,6 @@
+/* Small interaction overrides layered on the stable Lexi Notes v11 UI. */
+.read-line.check{min-height:34px;align-items:center}
+.check-toggle{width:40px;height:38px;min-width:40px;margin:-7px -7px -7px -8px}
+.check-toggle svg{width:20px;height:20px}
+.persistent-empty-section{gap:0}
+.persistent-empty-section .note-section-list{display:none}
