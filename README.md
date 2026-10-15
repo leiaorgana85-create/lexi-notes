@@ -38,7 +38,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Pin and Delete update the list optimistically and roll back if the backend rejects the action.
 - Search filters the loaded local note index immediately. When a valid session PIN is available, locked-body search can still be enriched from the backend in the background.
 - Unlocking a locked note still requires a backend read because the locked body is intentionally not kept in the normal local index.
-- `gestures.js` is the single iPhone/Home Screen interaction layer for note-body tap-to-edit and surface swipe-back. It uses Pointer Events and suppresses the retired edge-only touch handlers before they can compete.
+- `gestures.js` is the single iPhone/Home Screen interaction layer for note-body tap-to-edit and surface swipe-back. It uses Pointer Events and suppresses the retired edge-only touch handlers before they can compete. Pointer capture is avoided for text inputs/textarea so normal cursor placement remains native.
 
 ## Backend / Sheet
 `NOTES` schema:
@@ -63,4 +63,4 @@ Script Properties used by the live backend:
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. The compact-list / outline-icon / explicit-save responsiveness pass is in the current source. Note-body tap-to-edit and surface swipe-back are consolidated in `gestures.js` and cached by service-worker shell v8. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. The compact-list / outline-icon / explicit-save responsiveness pass is in the current source. Note-body tap-to-edit and surface swipe-back are consolidated in `gestures.js?v=2` and cached by service-worker shell v9. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
