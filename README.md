@@ -13,6 +13,7 @@ Standalone fast-access personal notes PWA for the Lexi Apps Ecosystem.
 - Repository: https://github.com/leiaorgana85-create/lexi-notes
 - Google Sheet: https://docs.google.com/spreadsheets/d/1JVN3NOkGGAqgeLSpjhyh4woNJw6qJg3v_UA9Jx5IFow/edit
 - Apps Script web app: https://script.google.com/macros/s/AKfycbwsZrm-TgtziRbM7AkJ538pmozw4CNsZA_tGApk6Osz-Sa9IXqvAl_SRbeMvdC-LUWK/exec
+- Home Screen icon: https://leiaorgana85-create.github.io/lexi-assets/notes-logo.png
 
 The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and Lexi Travel. Never commit that key to GitHub.
 
@@ -20,8 +21,10 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Dark theme.
 - Home opens directly to global search + notes list.
 - Pinned notes sort first.
-- New note opens directly in edit mode.
-- Existing notes open in read mode so URLs are clickable automatically.
+- Pin and Lock controls live only on each note card in the notes list.
+- Existing notes open in read mode; tapping the note body enters edit mode automatically, while URLs remain clickable.
+- New notes open directly in edit mode.
+- Edit mode shows **Save** at the top right.
 - Formatting tools: bullets, numbered list, checklist, indent/outdent, undo/redo and date insert.
 - Email uses `mailto:`; Share uses the native Web Share sheet when available.
 - There is no user-facing Archive screen. Delete soft-archives the row in the Sheet so accidental deletion is recoverable.
@@ -47,6 +50,6 @@ Script Properties used by the live backend:
 - This is an **app-access lock, not encryption of the Google Sheet**. Direct Sheet access can still read the underlying Body cells.
 
 ## Deployment
-Static PWA files live at the repository root and are intended to deploy from the `main` branch root through GitHub Pages.
+Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone repository contains the verified PWA and backend source, and the dedicated Apps Script web app is deployed and wired into `app.js`. GitHub Pages activation and end-to-end browser/Sheet smoke testing must pass before the standalone cutover is considered fully verified. The temporary `lexi-travel/notes-app/` copy should remain until that cutover is confirmed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and the owner has successfully authenticated it against the dedicated Lexi Notes Apps Script using the current private API key. Source, backend and Sheet remain aligned to the 9-column schema. The list-only Pin/Lock + tap-body-to-edit + top-right Save UI refinement and the dedicated `notes-logo.png` icon are deployed in the current source. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
