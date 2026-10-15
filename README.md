@@ -19,15 +19,18 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 
 ## UI
 - Dark theme.
-- Home opens directly to global search + compact notes list.
-- Pinned notes sort first.
+- Home opens directly to global search plus separate **Pinned** and **Notes** sections.
+- Pinned notes live only in the Pinned section; unpinned notes live in Notes. Each section sorts newest `Updated At` first.
 - Each list row keeps title/date on the same line, a one-line preview, and outline Pin / Lock / Delete controls.
+- New notes open directly in edit mode with a truly blank title field. The live backend still uses `Untitled Note` as its fallback storage/display value for a blank title, so the PWA deliberately normalizes that backend placeholder back to blank on load/search/unlock.
 - Existing notes open in read mode; tapping anywhere in the note content surface enters edit mode automatically, while URLs and toolbar controls remain clickable.
+- Read mode also has an explicit outline Edit button before Email as a fallback entry into edit mode.
 - Swipe right across the note surface to return to the notes list; do not depend on the iOS screen-edge gesture. If editing, the draft is captured and sync starts in the background.
-- New notes open directly in edit mode.
-- Edit mode shows **Save** at the top right.
-- Note-body actions use consistent outline icons for Email, Share and Delete.
+- Edit mode shows a compact **Save** button at the top right.
+- Checklist rows render as clickable outline checkboxes in read mode. Tapping a checkbox flips `[ ]` ↔ `[x]`, updates the note timestamp, and saves/syncs the note without entering edit mode.
+- Note-body actions use consistent outline icons for Edit, Email, Share and Delete.
 - Formatting tools use matching outline icons for bullets, numbered list, checklist, outdent, indent, undo, redo and date insert.
+- The Lexi Notes masthead is intentionally small and paired with an outline note icon.
 - The floating **+** is an SVG control centered inside its circular button.
 - Email uses `mailto:`; Share uses the native Web Share sheet when available.
 - There is no user-facing Archive screen. Delete soft-archives the row in the Sheet so accidental deletion is recoverable.
@@ -35,6 +38,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 ## Responsiveness
 - Typing no longer triggers an Apps Script write after every short pause. Edits stay local while typing and sync when the owner uses Save, Back or swipe-back.
 - Unlocked-note edits are queued locally until the backend confirms the save, so the UI does not wait on Apps Script latency.
+- Checklist toggles update the read view immediately and sync in the background.
 - Pin and Delete update the list optimistically and roll back if the backend rejects the action.
 - Search filters the loaded local note index immediately. When a valid session PIN is available, locked-body search can still be enriched from the backend in the background.
 - Unlocking a locked note still requires a backend read because the locked body is intentionally not kept in the normal local index.
@@ -64,4 +68,4 @@ Script Properties used by the live backend:
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. The compact-list / outline-icon / explicit-save responsiveness pass is in the current source. Full-surface tap-to-edit and surface swipe-back are in `gestures.js?v=3`, the stabilized note-surface CSS is loaded as `styles.css?v=2`, and both are cached by service-worker shell v10. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass is in `app.js?v=2` and `styles.css?v=3`, cached by service-worker shell v11. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
