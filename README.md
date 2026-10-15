@@ -46,7 +46,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Unlocking a locked note still requires a backend read because the locked body is intentionally not kept in the normal local index.
 - `gestures.js` is the iPhone/Home Screen interaction layer for full-surface tap-to-edit and surface swipe-back.
 - `ui-fixes.js` owns the forgiving checklist hit area and persistent empty section headings; `ui-fixes.css` contains those touch-target overrides plus list-page width/header refinements.
-- `write-transport.js` wraps only Lexi Notes Apps Script POST writes. Apps Script Content Service redirects responses to `script.googleusercontent.com`; if iPhone/Home Screen mode surfaces that redirected response as HTTP 404 or a network error, the transport first verifies whether the write already landed, retries once as a simple no-CORS POST only if needed, then verifies state with a normal GET before returning success to the app.
+- `write-transport.js` wraps only Lexi Notes Apps Script POST writes. Version 2 serializes every write for the same note ID so save/delete operations cannot overlap. If an upsert gets an ambiguous Apps Script redirect/404 response, the transport verifies the first request for longer but does **not** immediately resend it; the existing pending-upsert queue can retry later, after the first request has completed. This prevents two concurrent new-note upserts from both missing the row and appending duplicate IDs. Pin/lock/delete/setpin may still use one verified fallback resend because those actions do not create rows.
 - The read surface fills the available note viewport, horizontal overflow is suppressed, note-view bottom padding is reduced while the floating New Note button is hidden, and overscroll is contained to reduce the loose/slippery feel on iPhone.
 
 ## Backend / Sheet
@@ -55,6 +55,8 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 `ID | Created At | Updated At | Title | Body | Pinned | Locked | Archived | Sort Order`
 
 The live Apps Script project is bound to `LEXI Notes Data`. `backend.gs` in this repository is the source copy of that backend for review/documentation; changing the GitHub file does **not** update the installed bound Apps Script automatically.
+
+On 2026-10-15, three accidental duplicate Sheet rows created by the client retry race were removed. For each affected ID, the newer archived canonical row was preserved, so the soft-delete audit record remains while the stale active duplicate cannot reappear in the app. The installed bound Apps Script itself was not changed in that repair; duplicate prevention is currently enforced by the PWA write transport.
 
 Script Properties used by the live backend:
 - `LEXI_NOTES_API_KEY` — private API key; never commit the value.
@@ -72,4 +74,4 @@ Script Properties used by the live backend:
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass remains in `app.js?v=2` and `styles.css?v=3`. Persistent section headings, forgiving checklist touch zone, and list-page sizing/header refinements are in `ui-fixes.js?v=1` / `ui-fixes.css?v=1`; resilient Apps Script POST handling is in `write-transport.js?v=1`; all are cached by service-worker shell v13. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass remains in `app.js?v=2` and `styles.css?v=3`. Persistent section headings, forgiving checklist touch zone, and list-page sizing/header refinements are in `ui-fixes.js?v=1` / `ui-fixes.css?v=1`; serialized/idempotent client-side write handling is in `write-transport.js?v=2`; all are cached by service-worker shell v14. The duplicate-ID Sheet repair has been completed and verified. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
