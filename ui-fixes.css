@@ -1,7 +1,11 @@
-/* Small interaction overrides layered on the stable Lexi Notes v11 UI. */
+/* Small interaction overrides layered on the stable Lexi Notes UI. */
 .read-line.check{min-height:34px;align-items:center}
 .check-toggle{width:40px;height:38px;min-width:40px;margin:-7px -7px -7px -8px}
 .check-toggle svg{width:20px;height:20px}
+.read-line.list-line{display:flex;align-items:flex-start;gap:9px}
+.read-line.list-line>.marker{flex:0 0 24px;min-width:24px;margin:0;text-align:right}
+.read-line.bullet-line>.marker{text-align:center}
+.read-line.list-line>span:last-child{min-width:0;flex:1}
 .persistent-empty-section{gap:0}
 .persistent-empty-section .note-section-list{display:none}
 
