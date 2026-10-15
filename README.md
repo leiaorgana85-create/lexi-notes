@@ -22,7 +22,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Home opens directly to global search plus separate **Pinned** and **Notes** sections.
 - Pinned notes live only in the Pinned section; unpinned notes live in Notes. Each section sorts newest `Updated At` first.
 - When notes exist, the **Pinned** and **Notes** headings remain visible even if one section is temporarily empty.
-- Each list row keeps title/date on the same line, a one-line preview, and outline Pin / Lock / Delete controls.
+- Each list row keeps title/date on the same line, a one-line preview, and outline Pin / Lock / Delete controls. The row width is constrained to the same content width as the Search box so controls stay on-screen.
 - New notes open directly in edit mode with a truly blank title field. The live backend still uses `Untitled Note` as its fallback storage/display value for a blank title, so the PWA deliberately normalizes that backend placeholder back to blank on load/search/unlock.
 - Existing notes open in read mode; tapping anywhere in the note content surface enters edit mode automatically, while URLs and toolbar controls remain clickable.
 - Read mode also has an explicit outline Edit button before Email as a fallback entry into edit mode.
@@ -32,7 +32,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Checklist controls use an enlarged touch target; taps within roughly the first 52 px of a checklist row are treated as checkbox taps rather than tap-to-edit.
 - Note-body actions use consistent outline icons for Edit, Email, Share and Delete.
 - Formatting tools use matching outline icons for bullets, numbered list, checklist, outdent, indent, undo, redo and date insert.
-- The Lexi Notes masthead is intentionally small and paired with an outline note icon.
+- The Lexi Notes masthead is intentionally small, with its outline note icon after the **Lexi Notes** text and a smaller Refresh control on the right.
 - The floating **+** is an SVG control centered inside its circular button.
 - Email uses `mailto:`; Share uses the native Web Share sheet when available.
 - There is no user-facing Archive screen. Delete soft-archives the row in the Sheet so accidental deletion is recoverable.
@@ -45,7 +45,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Search filters the loaded local note index immediately. When a valid session PIN is available, locked-body search can still be enriched from the backend in the background.
 - Unlocking a locked note still requires a backend read because the locked body is intentionally not kept in the normal local index.
 - `gestures.js` is the iPhone/Home Screen interaction layer for full-surface tap-to-edit and surface swipe-back.
-- `ui-fixes.js` owns the forgiving checklist hit area and persistent empty section headings; `ui-fixes.css` contains the corresponding touch-target overrides.
+- `ui-fixes.js` owns the forgiving checklist hit area and persistent empty section headings; `ui-fixes.css` contains those touch-target overrides plus list-page width/header refinements.
 - `write-transport.js` wraps only Lexi Notes Apps Script POST writes. Apps Script Content Service redirects responses to `script.googleusercontent.com`; if iPhone/Home Screen mode surfaces that redirected response as HTTP 404 or a network error, the transport first verifies whether the write already landed, retries once as a simple no-CORS POST only if needed, then verifies state with a normal GET before returning success to the app.
 - The read surface fills the available note viewport, horizontal overflow is suppressed, note-view bottom padding is reduced while the floating New Note button is hidden, and overscroll is contained to reduce the loose/slippery feel on iPhone.
 
@@ -72,4 +72,4 @@ Script Properties used by the live backend:
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass remains in `app.js?v=2` and `styles.css?v=3`. Persistent section headings and the forgiving checklist touch zone are in `ui-fixes.js?v=1` / `ui-fixes.css?v=1`; resilient Apps Script POST handling is in `write-transport.js?v=1`; all are cached by service-worker shell v12. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass remains in `app.js?v=2` and `styles.css?v=3`. Persistent section headings, forgiving checklist touch zone, and list-page sizing/header refinements are in `ui-fixes.js?v=1` / `ui-fixes.css?v=1`; resilient Apps Script POST handling is in `write-transport.js?v=1`; all are cached by service-worker shell v13. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
