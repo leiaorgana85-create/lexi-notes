@@ -95,7 +95,10 @@
       tapBody: Boolean(target === readBody || (readBody.contains && readBody.contains(target))) && !isLink(target)
     };
 
-    try { noteView.setPointerCapture(e.pointerId); } catch (_) {}
+    const textControl = target.closest && target.closest('input, textarea');
+    if (!textControl) {
+      try { noteView.setPointerCapture(e.pointerId); } catch (_) {}
+    }
   }, { capture: true });
 
   noteView.addEventListener('pointermove', e => {
