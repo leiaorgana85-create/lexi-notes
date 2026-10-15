@@ -3,6 +3,7 @@
 
   const $ = id => document.getElementById(id);
   const noteView = $('noteView');
+  const noteContent = $('noteContent');
   const readBody = $('readBody');
   const readMode = $('readMode');
   const editMode = $('editMode');
@@ -16,9 +17,9 @@
   const saveBtn = $('saveBtn');
   const backBtn = $('backBtn');
 
-  if (!noteView || !readBody || !readMode || !editMode || !readTitle ||
-      !titleInput || !bodyInput || !saveStatus || !emailBtn || !shareBtn ||
-      !deleteBtn || !saveBtn || !backBtn) return;
+  if (!noteView || !noteContent || !readBody || !readMode || !editMode ||
+      !readTitle || !titleInput || !bodyInput || !saveStatus || !emailBtn ||
+      !shareBtn || !deleteBtn || !saveBtn || !backBtn) return;
 
   const elementTarget = target => {
     if (!target) return null;
@@ -26,9 +27,9 @@
     return target.parentElement || null;
   };
 
-  const isLink = target => {
+  const isInteractive = target => {
     const el = elementTarget(target);
-    return Boolean(el && el.closest && el.closest('a'));
+    return Boolean(el && el.closest && el.closest('button, a, dialog'));
   };
 
   const bodyFromReadView = () => Array.from(readBody.children).map(row => {
@@ -51,7 +52,7 @@
     return `${mark} ${text}`.trimEnd();
   }).join('\n');
 
-  function enterEditDirectly() {
+  function fallbackEnterEdit() {
     if (readMode.hidden || !editMode.hidden) return;
     readMode.hidden = true;
     editMode.hidden = false;
@@ -69,75 +70,85 @@
     });
   }
 
-  // app.js still contains the retired edge-only touch listeners. Stop those
-  // touch events before they reach the old bubble handlers; this file owns
-  // the note-surface gesture contract now via Pointer Events.
-  ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(type => {
-    noteView.addEventListener(type, e => e.stopImmediatePropagation(), {
-      capture: true,
-      passive: true
-    });
-  });
+  function enterEdit() {
+    if (readMode.hidden) return;
+    readBody.click();
+    if (!readMode.hidden) fallbackEnterEdit();
+  }
 
   let gesture = null;
 
-  noteView.addEventListener('pointerdown', e => {
-    if (!e.isPrimary) return;
+  noteView.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) {
+      gesture = null;
+      return;
+    }
     const target = elementTarget(e.target);
-    if (!target) return;
-    if (target.closest && target.closest('button, a, dialog')) return;
+    if (!target || isInteractive(target)) {
+      gesture = null;
+      return;
+    }
 
+    const touch = e.touches[0];
     gesture = {
-      id: e.pointerId,
-      x: e.clientX,
-      y: e.clientY,
+      x: touch.clientX,
+      y: touch.clientY,
       horizontal: false,
-      tapBody: Boolean(target === readBody || (readBody.contains && readBody.contains(target))) && !isLink(target)
+      tapSurface: !readMode.hidden &&
+        (target === noteContent || target === readMode ||
+         (noteContent.contains && noteContent.contains(target)))
     };
 
-    const textControl = target.closest && target.closest('input, textarea');
-    if (!textControl) {
-      try { noteView.setPointerCapture(e.pointerId); } catch (_) {}
-    }
-  }, { capture: true });
+    // Retired edge-only handlers in app.js are bubble-phase. Keep this
+    // surface gesture authoritative without blocking native scrolling.
+    e.stopPropagation();
+  }, { capture: true, passive: true });
 
-  noteView.addEventListener('pointermove', e => {
-    if (!gesture || e.pointerId !== gesture.id) return;
-    const dx = e.clientX - gesture.x;
-    const dy = e.clientY - gesture.y;
+  noteView.addEventListener('touchmove', e => {
+    if (!gesture || e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - gesture.x;
+    const dy = touch.clientY - gesture.y;
 
-    if (!gesture.horizontal && dx > 16 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+    e.stopPropagation();
+    if (!gesture.horizontal && dx > 14 && Math.abs(dx) > Math.abs(dy) * 1.2) {
       gesture.horizontal = true;
     }
-
     if (gesture.horizontal && e.cancelable) e.preventDefault();
   }, { capture: true, passive: false });
 
-  noteView.addEventListener('pointerup', e => {
-    if (!gesture || e.pointerId !== gesture.id) return;
-
+  noteView.addEventListener('touchend', e => {
+    if (!gesture || !e.changedTouches.length) return;
     const state = gesture;
     gesture = null;
-    const dx = e.clientX - state.x;
-    const dy = e.clientY - state.y;
-    const swipeBack = state.horizontal && dx > 72 && Math.abs(dy) < 80;
-    const bodyTap = state.tapBody && Math.abs(dx) < 10 && Math.abs(dy) < 10;
+    const touch = e.changedTouches[0];
+    const dx = touch.clientX - state.x;
+    const dy = touch.clientY - state.y;
+    const swipeBack = state.horizontal && dx > 60 && Math.abs(dy) < 72;
+    const tapSurface = state.tapSurface && Math.abs(dx) < 12 && Math.abs(dy) < 12;
 
-    try { noteView.releasePointerCapture(e.pointerId); } catch (_) {}
-
+    e.stopPropagation();
     if (swipeBack) {
       if (e.cancelable) e.preventDefault();
       backBtn.click();
       return;
     }
-
-    if (bodyTap && !readMode.hidden) {
+    if (tapSurface && !readMode.hidden) {
       if (e.cancelable) e.preventDefault();
-      enterEditDirectly();
+      enterEdit();
     }
   }, { capture: true, passive: false });
 
-  noteView.addEventListener('pointercancel', e => {
-    if (gesture && e.pointerId === gesture.id) gesture = null;
-  }, { capture: true });
+  noteView.addEventListener('touchcancel', e => {
+    gesture = null;
+    e.stopPropagation();
+  }, { capture: true, passive: true });
+
+  // Mouse/trackpad: the entire read surface is editable, not only text rows.
+  noteContent.addEventListener('click', e => {
+    if (readMode.hidden || isInteractive(e.target)) return;
+    const target = elementTarget(e.target);
+    if (!target || !(target === noteContent || target === readMode || readMode.contains(target))) return;
+    enterEdit();
+  });
 })();
