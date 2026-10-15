@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Lexi Notes">
   <title>Lexi Notes</title>
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="apple-touch-icon" href="https://leiaorgana85-create.github.io/lexi-assets/travel-logo.png">
+  <link rel="manifest" href="manifest.webmanifest?v=1">
+  <link rel="apple-touch-icon" href="https://leiaorgana85-create.github.io/lexi-assets/notes-logo.png?v=1">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -45,12 +45,10 @@
         <div class="note-toolbar">
           <button id="backBtn" class="text-btn" type="button">‹ Notes</button>
           <div class="note-actions">
-            <button id="pinBtn" class="icon-btn" type="button" aria-label="Pin" title="Pin">☆</button>
-            <button id="lockBtn" class="icon-btn" type="button" aria-label="Lock" title="Lock">🔓</button>
             <button id="emailBtn" class="icon-btn" type="button" aria-label="Email" title="Email">✉</button>
             <button id="shareBtn" class="icon-btn" type="button" aria-label="Share" title="Share">↗</button>
-            <button id="editBtn" class="icon-btn" type="button" aria-label="Edit" title="Edit">✎</button>
             <button id="deleteBtn" class="icon-btn danger" type="button" aria-label="Delete" title="Delete">⌫</button>
+            <button id="saveBtn" class="primary-btn compact toolbar-save" type="button" hidden>Save</button>
           </div>
         </div>
 
@@ -63,7 +61,7 @@
         <div id="noteContent">
           <div id="readMode">
             <h2 id="readTitle" class="read-title"></h2>
-            <div id="readBody" class="read-body"></div>
+            <div id="readBody" class="read-body" title="Tap to edit"></div>
           </div>
 
           <div id="editMode" hidden>
@@ -81,7 +79,6 @@
             <textarea id="bodyInput" class="body-input" placeholder="Write a note…" spellcheck="true"></textarea>
             <div class="edit-footer">
               <span id="saveStatus" class="status" aria-live="polite"></span>
-              <button id="doneBtn" class="primary-btn compact" type="button">Done</button>
             </div>
           </div>
         </div>
