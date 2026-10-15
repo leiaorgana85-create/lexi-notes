@@ -134,5 +134,30 @@
   </dialog>
 
   <script src="app.js"></script>
+  <script>
+    (() => {
+      const readBody = document.getElementById('readBody');
+      if (!readBody) return;
+      let touchStart = null;
+      readBody.addEventListener('touchstart', e => {
+        if (e.touches.length !== 1) { touchStart = null; return; }
+        const t = e.touches[0];
+        touchStart = { x: t.clientX, y: t.clientY };
+      }, { passive: true });
+      readBody.addEventListener('touchend', e => {
+        if (!touchStart || !e.changedTouches.length) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - touchStart.x;
+        const dy = t.clientY - touchStart.y;
+        touchStart = null;
+        let target = e.target;
+        if (target && target.nodeType !== 1) target = target.parentElement;
+        if (target && target.closest && target.closest('a')) return;
+        if (Math.abs(dx) > 12 || Math.abs(dy) > 12) return;
+        e.preventDefault();
+        readBody.click();
+      }, { passive: false });
+    })();
+  </script>
 </body>
 </html>
