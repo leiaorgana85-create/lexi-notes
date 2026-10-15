@@ -18,6 +18,7 @@
   let notes=[], activeId='', activeNote=null, pinConfigured=false, pinResolver=null, pinMode='unlock', dirty=false, searchTimer=0, toastTimer=0, swipeStart=null;
   const isTrue=v=>v===true||String(v||'').toLowerCase()==='true';
   const cleanTitle=v=>String(v||'').trim()==='Untitled Note'?'':String(v||'');
+  const isBlankNote=(title,body)=>!cleanTitle(title).trim()&&!String(body||'').trim();
   const noteId=()=>`note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
   const sessionPin=()=>sessionStorage.getItem(PIN_SESSION)||'';
 
@@ -37,11 +38,14 @@
   function saveCache(){const safe=notes.map(n=>({...n,Body:isTrue(n.Locked)?'':String(n.Body||'')}));localStorage.setItem(CACHE_STORAGE,JSON.stringify({savedAt:Date.now(),notes:safe,pinConfigured}))}
   function mergePending(serverNotes){
     const merged=Array.isArray(serverNotes)?serverNotes.map(n=>({...n,Title:cleanTitle(n.Title)})):[];
-    Object.values(readPending()).forEach(p=>{
+    const pending=readPending(),serverIds=new Set(merged.map(n=>String(n.ID))),entries=Object.entries(pending);let changed=false;
+    entries.forEach(([id,p])=>{
+      if(!serverIds.has(String(id))&&isBlankNote(p.title,p.body)){delete pending[id];changed=true;return}
       const i=merged.findIndex(n=>String(n.ID)===String(p.id));
       const local={ID:p.id,Title:p.title,Body:p.body,Pinned:isTrue(p.pinned),Locked:false,Archived:false,'Updated At':p.localUpdatedAt||new Date().toISOString(),'Created At':p.createdAt||p.localUpdatedAt||new Date().toISOString(),'Sort Order':9999};
       if(i>=0)merged[i]={...merged[i],...local};else merged.unshift(local);
     });
+    if(changed)writePending(pending);
     return merged;
   }
   async function flushPending(){
@@ -123,7 +127,11 @@
   function captureDraft(){
     const n=current();if(!n||editMode.hidden)return null;
     const now=new Date().toISOString(),title=titleInput.value.trim(),body=bodyInput.value.replace(/\r/g,'');
-    n.Title=title;n.Body=body;n['Updated At']=now;
+    if(n._localOnly&&isBlankNote(title,body)){
+      const i=notes.findIndex(note=>String(note.ID)===String(n.ID));if(i>=0)notes.splice(i,1);
+      clearPending(n.ID);saveCache();dirty=false;return {discarded:true};
+    }
+    n.Title=title;n.Body=body;n['Updated At']=now;delete n._localOnly;
     const payload=payloadForNote(n,now);
     saveCache();dirty=false;return {note:n,payload};
   }
@@ -132,8 +140,8 @@
     if(!payload.locked)queuePending(payload);
     requestPost('upsert',payload).then(d=>{note['Updated At']=d.updatedAt||note['Updated At'];clearPending(note.ID);saveCache();showToast('Saved')}).catch(e=>{showToast(`Save failed: ${e.message}`,true)});
   }
-  function saveAndStay(){const draft=captureDraft();if(!draft)return;paintNote(draft.note);syncDraft(draft.note,draft.payload)}
-  function goBack(){if(!editMode.hidden){const draft=captureDraft();showList();if(draft)syncDraft(draft.note,draft.payload)}else showList()}
+  function saveAndStay(){const draft=captureDraft();if(!draft)return;if(draft.discarded){showList();showToast('Blank note discarded');return}paintNote(draft.note);syncDraft(draft.note,draft.payload)}
+  function goBack(){if(!editMode.hidden){const draft=captureDraft();showList();if(draft&&!draft.discarded)syncDraft(draft.note,draft.payload)}else showList()}
   function toggleChecklistLine(lineIndex){
     const n=current();if(!n||readMode.hidden)return;
     const lines=String(n.Body||'').split('\n'),line=lines[lineIndex]||'';
@@ -142,7 +150,7 @@
     const now=new Date().toISOString();n.Body=lines.join('\n');n['Updated At']=now;renderBody(n.Body);saveCache();syncDraft(n,payloadForNote(n,now));
   }
 
-  async function createNote(){const id=noteId(),now=new Date().toISOString(),n={ID:id,'Created At':now,'Updated At':now,Title:'',Body:'',Pinned:false,Locked:false,Archived:false,'Sort Order':9999};notes.unshift(n);activeId=id;topbar.hidden=true;listView.hidden=true;noteView.hidden=false;newNoteBtn.hidden=true;paintNote(n);enterEdit('title');markDirty()}
+  async function createNote(){const id=noteId(),now=new Date().toISOString(),n={ID:id,'Created At':now,'Updated At':now,Title:'',Body:'',Pinned:false,Locked:false,Archived:false,'Sort Order':9999,_localOnly:true};notes.unshift(n);activeId=id;topbar.hidden=true;listView.hidden=true;noteView.hidden=false;newNoteBtn.hidden=true;paintNote(n);enterEdit('title');markDirty()}
   async function togglePin(note){if(!note)return;const previous=isTrue(note.Pinned),next=!previous;note.Pinned=next;saveCache();renderList();try{await requestPost('pin',{id:note.ID,pinned:next})}catch(e){note.Pinned=previous;saveCache();renderList();showToast(e.message,true)}}
   async function toggleLock(note){
     if(!note)return;
