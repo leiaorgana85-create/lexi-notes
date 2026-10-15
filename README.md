@@ -23,7 +23,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Pinned notes sort first.
 - Each list row keeps title/date on the same line, a one-line preview, and outline Pin / Lock / Delete controls.
 - Existing notes open in read mode; tapping the note body enters edit mode automatically, while URLs remain clickable.
-- Swipe from the left edge toward the right while inside a note to return to the notes list. If editing, the draft is captured and sync starts in the background.
+- Swipe right across the note surface to return to the notes list; do not depend on the iOS screen-edge gesture. If editing, the draft is captured and sync starts in the background.
 - New notes open directly in edit mode.
 - Edit mode shows **Save** at the top right.
 - Note-body actions use consistent outline icons for Email, Share and Delete.
@@ -62,4 +62,4 @@ Script Properties used by the live backend:
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. The compact-list / outline-icon / swipe-back / explicit-save responsiveness pass is in the current source and service-worker shell v5. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. The compact-list / outline-icon / surface swipe-back / explicit-save responsiveness pass and direct iPhone tap-to-edit fallback are in the current source and service-worker shell v7. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
