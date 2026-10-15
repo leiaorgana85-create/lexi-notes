@@ -22,7 +22,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Home opens directly to global search + compact notes list.
 - Pinned notes sort first.
 - Each list row keeps title/date on the same line, a one-line preview, and outline Pin / Lock / Delete controls.
-- Existing notes open in read mode; tapping the note body enters edit mode automatically, while URLs remain clickable.
+- Existing notes open in read mode; tapping anywhere in the note content surface enters edit mode automatically, while URLs and toolbar controls remain clickable.
 - Swipe right across the note surface to return to the notes list; do not depend on the iOS screen-edge gesture. If editing, the draft is captured and sync starts in the background.
 - New notes open directly in edit mode.
 - Edit mode shows **Save** at the top right.
@@ -38,7 +38,8 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - Pin and Delete update the list optimistically and roll back if the backend rejects the action.
 - Search filters the loaded local note index immediately. When a valid session PIN is available, locked-body search can still be enriched from the backend in the background.
 - Unlocking a locked note still requires a backend read because the locked body is intentionally not kept in the normal local index.
-- `gestures.js` is the single iPhone/Home Screen interaction layer for note-body tap-to-edit and surface swipe-back. It uses Pointer Events and suppresses the retired edge-only touch handlers before they can compete. Pointer capture is avoided for text inputs/textarea so normal cursor placement remains native.
+- `gestures.js` is the iPhone/Home Screen interaction layer for full-surface tap-to-edit and surface swipe-back. It uses native touch events, suppresses only the retired bubble-phase edge handler, and prevents horizontal page drag only after a genuine right-swipe is detected.
+- The read surface fills the available note viewport, horizontal overflow is suppressed, note-view bottom padding is reduced while the floating New Note button is hidden, and overscroll is contained to reduce the loose/slippery feel on iPhone.
 
 ## Backend / Sheet
 `NOTES` schema:
@@ -63,4 +64,4 @@ Script Properties used by the live backend:
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. The compact-list / outline-icon / explicit-save responsiveness pass is in the current source. Note-body tap-to-edit and surface swipe-back are consolidated in `gestures.js?v=2` and cached by service-worker shell v9. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. The compact-list / outline-icon / explicit-save responsiveness pass is in the current source. Full-surface tap-to-edit and surface swipe-back are in `gestures.js?v=3`, the stabilized note-surface CSS is loaded as `styles.css?v=2`, and both are cached by service-worker shell v10. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
