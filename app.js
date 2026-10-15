@@ -10,13 +10,14 @@
   const topbar=$('topbar'), connectView=$('connectView'), listView=$('listView'), noteView=$('noteView');
   const searchInput=$('searchInput'), clearSearchBtn=$('clearSearchBtn'), notesList=$('notesList'), emptyState=$('emptyState'), syncStatus=$('syncStatus');
   const apiKeyInput=$('apiKeyInput'), connectBtn=$('connectBtn'), connectError=$('connectError'), refreshBtn=$('refreshBtn'), newNoteBtn=$('newNoteBtn');
-  const backBtn=$('backBtn'), emailBtn=$('emailBtn'), shareBtn=$('shareBtn'), deleteBtn=$('deleteBtn'), saveBtn=$('saveBtn');
+  const backBtn=$('backBtn'), editBtn=$('editBtn'), emailBtn=$('emailBtn'), shareBtn=$('shareBtn'), deleteBtn=$('deleteBtn'), saveBtn=$('saveBtn');
   const lockedGate=$('lockedGate'), unlockBtn=$('unlockBtn'), noteContent=$('noteContent'), readMode=$('readMode'), readTitle=$('readTitle'), readBody=$('readBody');
   const editMode=$('editMode'), titleInput=$('titleInput'), bodyInput=$('bodyInput'), formatBar=$('formatBar'), saveStatus=$('saveStatus'), toast=$('toast');
   const pinDialog=$('pinDialog'), pinForm=$('pinForm'), pinDialogTitle=$('pinDialogTitle'), pinDialogText=$('pinDialogText'), pinInput=$('pinInput'), pinConfirmInput=$('pinConfirmInput'), pinError=$('pinError'), pinCancelBtn=$('pinCancelBtn'), pinSubmitBtn=$('pinSubmitBtn');
 
   let notes=[], activeId='', activeNote=null, pinConfigured=false, pinResolver=null, pinMode='unlock', dirty=false, searchTimer=0, toastTimer=0, swipeStart=null;
   const isTrue=v=>v===true||String(v||'').toLowerCase()==='true';
+  const cleanTitle=v=>String(v||'').trim()==='Untitled Note'?'':String(v||'');
   const noteId=()=>`note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
   const sessionPin=()=>sessionStorage.getItem(PIN_SESSION)||'';
 
@@ -35,7 +36,7 @@
   function clearPending(id){const p=readPending();if(Object.prototype.hasOwnProperty.call(p,id)){delete p[id];writePending(p)}}
   function saveCache(){const safe=notes.map(n=>({...n,Body:isTrue(n.Locked)?'':String(n.Body||'')}));localStorage.setItem(CACHE_STORAGE,JSON.stringify({savedAt:Date.now(),notes:safe,pinConfigured}))}
   function mergePending(serverNotes){
-    const merged=Array.isArray(serverNotes)?serverNotes.map(n=>({...n})):[];
+    const merged=Array.isArray(serverNotes)?serverNotes.map(n=>({...n,Title:cleanTitle(n.Title)})):[];
     Object.values(readPending()).forEach(p=>{
       const i=merged.findIndex(n=>String(n.ID)===String(p.id));
       const local={ID:p.id,Title:p.title,Body:p.body,Pinned:isTrue(p.pinned),Locked:false,Archived:false,'Updated At':p.localUpdatedAt||new Date().toISOString(),'Created At':p.createdAt||p.localUpdatedAt||new Date().toISOString(),'Sort Order':9999};
@@ -53,7 +54,7 @@
   }
   function formatDate(v){const t=Date.parse(v||'');if(!Number.isFinite(t))return'';return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:new Date(t).getFullYear()===new Date().getFullYear()?undefined:'numeric'}).format(new Date(t))}
   function current(){return notes.find(n=>String(n.ID)===String(activeId))||activeNote}
-  function setToolbarMode(mode){const editing=mode==='edit',locked=mode==='locked';emailBtn.hidden=editing||locked;shareBtn.hidden=editing||locked;deleteBtn.hidden=editing||locked;saveBtn.hidden=!editing}
+  function setToolbarMode(mode){const editing=mode==='edit',locked=mode==='locked';editBtn.hidden=editing||locked;emailBtn.hidden=editing||locked;shareBtn.hidden=editing||locked;deleteBtn.hidden=editing||locked;saveBtn.hidden=!editing}
   function showToast(message,error=false){clearTimeout(toastTimer);toast.textContent=message;toast.classList.toggle('error',error);toast.hidden=false;toastTimer=setTimeout(()=>{toast.hidden=true},2200)}
 
   async function requestGet(action,params={}){
@@ -74,45 +75,56 @@
   function showList(){connectView.hidden=true;noteView.hidden=true;listView.hidden=false;topbar.hidden=false;newNoteBtn.hidden=false;activeId='';activeNote=null;renderList()}
   function previewFor(note){if(isTrue(note.Locked))return'Locked note';return String(note.Body||'').replace(/\s+/g,' ').trim()||'Empty note'}
   function iconButton(name,classes,label,title){const b=document.createElement('button');b.type='button';b.className=classes;b.innerHTML=ICONS[name];b.setAttribute('aria-label',label);b.title=title;return b}
+  function appendNoteCard(note,target){
+    const card=document.createElement('div');card.className='note-card';
+    const inner=document.createElement('div');inner.className='note-card-inner';
+    const main=document.createElement('button');main.type='button';main.className='note-main note-open-btn';
+    const titleRow=document.createElement('div');titleRow.className='note-title-row';
+    const title=document.createElement('div');title.className='note-title';title.textContent=cleanTitle(note.Title);
+    const date=document.createElement('div');date.className='note-date';date.textContent=formatDate(note['Updated At']);
+    const preview=document.createElement('div');preview.className='note-preview';preview.textContent=previewFor(note);
+    titleRow.append(title,date);main.append(titleRow,preview);main.addEventListener('click',()=>openNote(note.ID));
+    const controls=document.createElement('div');controls.className='note-card-controls';
+    const pin=iconButton('star','card-action-btn pin-card-btn'+(isTrue(note.Pinned)?' pinned':''),isTrue(note.Pinned)?'Unpin note':'Pin note',isTrue(note.Pinned)?'Unpin':'Pin');
+    if(isTrue(note.Pinned))pin.querySelector('svg').style.fill='currentColor';
+    pin.addEventListener('click',()=>togglePin(note));
+    const locked=isTrue(note.Locked);
+    const lock=iconButton(locked?'lock':'unlock','card-action-btn lock-card-btn'+(locked?' locked':''),locked?'Unlock note':'Lock note',locked?'Unlock':'Lock');
+    lock.addEventListener('click',()=>toggleLock(note));
+    const del=iconButton('trash','card-action-btn delete-card-btn','Delete note','Delete');del.addEventListener('click',()=>deleteNote(note,false));
+    controls.append(pin,lock,del);inner.append(main,controls);card.append(inner);target.append(card);
+  }
+  function appendSection(label,data){
+    if(!data.length)return;
+    const section=document.createElement('section');section.className='note-list-section';
+    const heading=document.createElement('div');heading.className='note-list-heading';heading.textContent=label;
+    const list=document.createElement('div');list.className='note-section-list';
+    data.forEach(note=>appendNoteCard(note,list));section.append(heading,list);notesList.append(section);
+  }
   function renderList(){
     const q=searchInput.value.trim().toLowerCase();clearSearchBtn.hidden=!q;
-    const data=notes.filter(n=>!isTrue(n.Archived)).filter(n=>!q||`${n.Title||''}\n${isTrue(n.Locked)?'':n.Body||''}`.toLowerCase().includes(q)).sort((a,b)=>Number(isTrue(b.Pinned))-Number(isTrue(a.Pinned))||Date.parse(b['Updated At']||0)-Date.parse(a['Updated At']||0));
+    const data=notes.filter(n=>!isTrue(n.Archived)).filter(n=>!q||`${n.Title||''}\n${isTrue(n.Locked)?'':n.Body||''}`.toLowerCase().includes(q)).sort((a,b)=>Date.parse(b['Updated At']||0)-Date.parse(a['Updated At']||0));
+    const pinned=data.filter(n=>isTrue(n.Pinned)),regular=data.filter(n=>!isTrue(n.Pinned));
     notesList.replaceChildren();emptyState.hidden=data.length>0;emptyState.textContent=q?'No notes match your search.':'No notes yet.';
-    data.forEach(note=>{
-      const card=document.createElement('div');card.className='note-card';
-      const inner=document.createElement('div');inner.className='note-card-inner';
-      const main=document.createElement('button');main.type='button';main.className='note-main note-open-btn';
-      const titleRow=document.createElement('div');titleRow.className='note-title-row';
-      const title=document.createElement('div');title.className='note-title';title.textContent=note.Title||'Untitled Note';
-      const date=document.createElement('div');date.className='note-date';date.textContent=formatDate(note['Updated At']);
-      const preview=document.createElement('div');preview.className='note-preview';preview.textContent=previewFor(note);
-      titleRow.append(title,date);main.append(titleRow,preview);main.addEventListener('click',()=>openNote(note.ID));
-      const controls=document.createElement('div');controls.className='note-card-controls';
-      const pin=iconButton('star','card-action-btn pin-card-btn'+(isTrue(note.Pinned)?' pinned':''),isTrue(note.Pinned)?'Unpin note':'Pin note',isTrue(note.Pinned)?'Unpin':'Pin');
-      if(isTrue(note.Pinned))pin.querySelector('svg').style.fill='currentColor';
-      pin.addEventListener('click',()=>togglePin(note));
-      const locked=isTrue(note.Locked);
-      const lock=iconButton(locked?'lock':'unlock','card-action-btn lock-card-btn'+(locked?' locked':''),locked?'Unlock note':'Lock note',locked?'Unlock':'Lock');
-      lock.addEventListener('click',()=>toggleLock(note));
-      const del=iconButton('trash','card-action-btn delete-card-btn','Delete note','Delete');del.addEventListener('click',()=>deleteNote(note,false));
-      controls.append(pin,lock,del);inner.append(main,controls);card.append(inner);notesList.append(card);
-    });
+    appendSection('Pinned',pinned);appendSection('Notes',regular);
   }
 
   function linkify(target,text){const re=/(?:https?:\/\/|www\.)[^\s<]+/gi;let last=0,m;while((m=re.exec(text))){let shown=m[0],url=shown.startsWith('www.')?`https://${shown}`:shown,trailing='';while(/[),.;!?]$/.test(shown)){trailing=shown.slice(-1)+trailing;shown=shown.slice(0,-1);url=url.slice(0,-1)}if(m.index>last)target.append(document.createTextNode(text.slice(last,m.index)));const a=document.createElement('a');a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=shown;target.append(a);if(trailing)target.append(document.createTextNode(trailing));last=m.index+m[0].length}if(last<text.length)target.append(document.createTextNode(text.slice(last)))}
-  function renderBody(text){readBody.replaceChildren();String(text||'').split('\n').forEach(line=>{const row=document.createElement('div');row.className='read-line';const c=line.match(/^(\s*)\[( |x|X)\]\s*(.*)$/),b=line.match(/^(\s*)[•*-]\s+(.*)$/),n=line.match(/^(\s*)(\d+)\.\s+(.*)$/);if(c){row.classList.add('check');const mark=document.createElement('span');mark.className='marker';mark.textContent=String(c[2]).toLowerCase()==='x'?'☑':'☐';const t=document.createElement('span');linkify(t,c[3]||'');row.append(mark,t)}else if(b){const mark=document.createElement('span');mark.className='marker';mark.textContent='•';const t=document.createElement('span');linkify(t,b[2]||'');row.append(mark,t)}else if(n){const mark=document.createElement('span');mark.className='marker';mark.textContent=`${n[2]}.`;const t=document.createElement('span');linkify(t,n[3]||'');row.append(mark,t)}else if(line==='---'){row.append(document.createElement('hr'))}else linkify(row,line||' ');readBody.append(row)})}
-  function paintNote(note){activeNote=note;readTitle.textContent=note.Title||'Untitled Note';renderBody(note.Body||'');lockedGate.hidden=true;noteContent.hidden=false;readMode.hidden=false;editMode.hidden=true;dirty=false;setToolbarMode('read')}
+  function checkIcon(checked){return checked?'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 2.6 2.6L16.5 9"/></svg>':'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>'}
+  function renderBody(text){readBody.replaceChildren();String(text||'').split('\n').forEach((line,lineIndex)=>{const row=document.createElement('div');row.className='read-line';const c=line.match(/^(\s*)\[( |x|X)\]\s*(.*)$/),b=line.match(/^(\s*)[•*-]\s+(.*)$/),n=line.match(/^(\s*)(\d+)\.\s+(.*)$/);if(c){row.classList.add('check');const checked=String(c[2]).toLowerCase()==='x';const mark=document.createElement('button');mark.type='button';mark.className='marker check-toggle';mark.dataset.checkLine=String(lineIndex);mark.innerHTML=checkIcon(checked);mark.setAttribute('aria-label',checked?'Mark incomplete':'Mark complete');mark.setAttribute('aria-pressed',String(checked));const t=document.createElement('span');linkify(t,c[3]||'');row.append(mark,t)}else if(b){const mark=document.createElement('span');mark.className='marker';mark.textContent='•';const t=document.createElement('span');linkify(t,b[2]||'');row.append(mark,t)}else if(n){const mark=document.createElement('span');mark.className='marker';mark.textContent=`${n[2]}.`;const t=document.createElement('span');linkify(t,n[3]||'');row.append(mark,t)}else if(line==='---'){row.append(document.createElement('hr'))}else linkify(row,line||' ');readBody.append(row)})}
+  function paintNote(note){activeNote=note;readTitle.textContent=cleanTitle(note.Title);readTitle.hidden=!cleanTitle(note.Title).trim();renderBody(note.Body||'');lockedGate.hidden=true;noteContent.hidden=false;readMode.hidden=false;editMode.hidden=true;dirty=false;setToolbarMode('read')}
 
   async function openNote(id){activeId=id;const indexNote=notes.find(n=>String(n.ID)===String(id));if(!indexNote)return;topbar.hidden=true;listView.hidden=true;connectView.hidden=true;noteView.hidden=false;newNoteBtn.hidden=true;if(isTrue(indexNote.Locked)&&!indexNote.Body){noteContent.hidden=true;lockedGate.hidden=false;activeNote=indexNote;setToolbarMode('locked');return}paintNote(indexNote)}
-  async function unlockActive(){const pin=sessionPin()||await askPin('unlock');if(!pin)return;try{const d=await requestGet('get',{id:activeId,pin});sessionStorage.setItem(PIN_SESSION,pin);const i=notes.findIndex(n=>String(n.ID)===String(activeId));if(i>=0)notes[i]={...notes[i],...d.note};paintNote(d.note);syncStatus.textContent='Unlocked for this session'}catch(e){sessionStorage.removeItem(PIN_SESSION);showToast(e.message,true)}}
+  async function unlockActive(){const pin=sessionPin()||await askPin('unlock');if(!pin)return;try{const d=await requestGet('get',{id:activeId,pin});d.note.Title=cleanTitle(d.note.Title);sessionStorage.setItem(PIN_SESSION,pin);const i=notes.findIndex(n=>String(n.ID)===String(activeId));if(i>=0)notes[i]={...notes[i],...d.note};paintNote(d.note);syncStatus.textContent='Unlocked for this session'}catch(e){sessionStorage.removeItem(PIN_SESSION);showToast(e.message,true)}}
 
-  function enterEdit(focusTarget='body'){const n=current();if(!n)return;readMode.hidden=true;editMode.hidden=false;setToolbarMode('edit');titleInput.value=n.Title||'';bodyInput.value=n.Body||'';dirty=false;saveStatus.textContent='';setTimeout(()=>{if(focusTarget==='title'){titleInput.focus();titleInput.select()}else{bodyInput.focus();const end=bodyInput.value.length;bodyInput.setSelectionRange(end,end)}},20)}
+  function enterEdit(focusTarget='body'){const n=current();if(!n)return;readMode.hidden=true;editMode.hidden=false;setToolbarMode('edit');titleInput.value=cleanTitle(n.Title);bodyInput.value=n.Body||'';dirty=false;saveStatus.textContent='';setTimeout(()=>{if(focusTarget==='title'){titleInput.focus();titleInput.setSelectionRange(0,titleInput.value.length)}else{bodyInput.focus();const end=bodyInput.value.length;bodyInput.setSelectionRange(end,end)}},20)}
   function markDirty(){dirty=true;saveStatus.textContent='Unsaved'}
+  function payloadForNote(n,now){return{id:n.ID,title:String(n.Title||''),body:String(n.Body||''),pinned:isTrue(n.Pinned),locked:isTrue(n.Locked),pin:isTrue(n.Locked)?sessionPin():'',localUpdatedAt:now,createdAt:n['Created At']||now}}
   function captureDraft(){
     const n=current();if(!n||editMode.hidden)return null;
-    const now=new Date().toISOString(),title=titleInput.value.trim()||'Untitled Note',body=bodyInput.value.replace(/\r/g,'');
+    const now=new Date().toISOString(),title=titleInput.value.trim(),body=bodyInput.value.replace(/\r/g,'');
     n.Title=title;n.Body=body;n['Updated At']=now;
-    const payload={id:n.ID,title,body,pinned:isTrue(n.Pinned),locked:isTrue(n.Locked),pin:isTrue(n.Locked)?sessionPin():'',localUpdatedAt:now,createdAt:n['Created At']||now};
+    const payload=payloadForNote(n,now);
     saveCache();dirty=false;return {note:n,payload};
   }
   function syncDraft(note,payload){
@@ -122,8 +134,15 @@
   }
   function saveAndStay(){const draft=captureDraft();if(!draft)return;paintNote(draft.note);syncDraft(draft.note,draft.payload)}
   function goBack(){if(!editMode.hidden){const draft=captureDraft();showList();if(draft)syncDraft(draft.note,draft.payload)}else showList()}
+  function toggleChecklistLine(lineIndex){
+    const n=current();if(!n||readMode.hidden)return;
+    const lines=String(n.Body||'').split('\n'),line=lines[lineIndex]||'';
+    const m=line.match(/^(\s*)\[( |x|X)\](\s*.*)$/);if(!m)return;
+    const checked=String(m[2]).toLowerCase()==='x';lines[lineIndex]=`${m[1]}[${checked?' ':'x'}]${m[3]}`;
+    const now=new Date().toISOString();n.Body=lines.join('\n');n['Updated At']=now;renderBody(n.Body);saveCache();syncDraft(n,payloadForNote(n,now));
+  }
 
-  async function createNote(){const id=noteId(),now=new Date().toISOString(),n={ID:id,'Created At':now,'Updated At':now,Title:'Untitled Note',Body:'',Pinned:false,Locked:false,Archived:false,'Sort Order':9999};notes.unshift(n);activeId=id;topbar.hidden=true;listView.hidden=true;noteView.hidden=false;newNoteBtn.hidden=true;paintNote(n);enterEdit('title');markDirty()}
+  async function createNote(){const id=noteId(),now=new Date().toISOString(),n={ID:id,'Created At':now,'Updated At':now,Title:'',Body:'',Pinned:false,Locked:false,Archived:false,'Sort Order':9999};notes.unshift(n);activeId=id;topbar.hidden=true;listView.hidden=true;noteView.hidden=false;newNoteBtn.hidden=true;paintNote(n);enterEdit('title');markDirty()}
   async function togglePin(note){if(!note)return;const previous=isTrue(note.Pinned),next=!previous;note.Pinned=next;saveCache();renderList();try{await requestPost('pin',{id:note.ID,pinned:next})}catch(e){note.Pinned=previous;saveCache();renderList();showToast(e.message,true)}}
   async function toggleLock(note){
     if(!note)return;
@@ -142,7 +161,7 @@
     }
   }
   async function deleteNote(note,fromDetail=false){
-    if(!note||!confirm(`Delete “${note.Title||'Untitled Note'}”?`))return;
+    if(!note||!confirm(`Delete ${note.Title?`“${note.Title}”`:'this note'}?`))return;
     let pin='';if(isTrue(note.Locked)){pin=sessionPin()||await askPin('unlock');if(!pin)return}
     const index=notes.findIndex(n=>String(n.ID)===String(note.ID));if(index<0)return;
     notes.splice(index,1);clearPending(note.ID);saveCache();if(fromDetail)showList();else renderList();
@@ -150,9 +169,9 @@
     catch(e){notes.splice(Math.min(index,notes.length),0,note);saveCache();renderList();showToast(`Delete failed: ${e.message}`,true)}
   }
   function deleteCurrent(){const n=current();if(n)deleteNote(n,true)}
-  function exportText(n){return `${n.Title||'Untitled Note'}\n\n${n.Body||''}`.trim()}
-  function emailCurrent(){const n=current();if(n)location.href=`mailto:?subject=${encodeURIComponent(n.Title||'Lexi Note')}&body=${encodeURIComponent(exportText(n))}`}
-  async function shareCurrent(){const n=current();if(!n)return;const p={title:n.Title||'Lexi Note',text:exportText(n)};if(navigator.share){try{await navigator.share(p);return}catch(e){if(e.name==='AbortError')return}}try{await navigator.clipboard.writeText(p.text);showToast('Copied note')}catch(_){emailCurrent()}}
+  function exportText(n){return [cleanTitle(n.Title).trim(),String(n.Body||'').trim()].filter(Boolean).join('\n\n')}
+  function emailCurrent(){const n=current();if(n)location.href=`mailto:?subject=${encodeURIComponent(cleanTitle(n.Title)||'Lexi Note')}&body=${encodeURIComponent(exportText(n))}`}
+  async function shareCurrent(){const n=current();if(!n)return;const p={title:cleanTitle(n.Title)||'Lexi Note',text:exportText(n)};if(navigator.share){try{await navigator.share(p);return}catch(e){if(e.name==='AbortError')return}}try{await navigator.clipboard.writeText(p.text);showToast('Copied note')}catch(_){emailCurrent()}}
 
   function stripPrefix(line){return line.replace(/^(\s*)(?:•\s+|[-*]\s+|\[(?: |x|X)\]\s+|\d+\.\s+)/,'$1')}
   function replaceLines(fn){const v=bodyInput.value,s=bodyInput.selectionStart,e=bodyInput.selectionEnd,ls=v.lastIndexOf('\n',Math.max(0,s-1))+1,nb=v.indexOf('\n',e),le=nb===-1?v.length:nb,r=v.slice(ls,le).split('\n').map(fn).join('\n');bodyInput.setRangeText(r,ls,le,'select');bodyInput.focus();markDirty()}
@@ -178,18 +197,19 @@
   searchInput.addEventListener('input',()=>{
     clearSearchBtn.hidden=!searchInput.value;clearTimeout(searchTimer);renderList();
     const q=searchInput.value.trim(),pin=sessionPin();if(!q||!pin)return;
-    searchTimer=setTimeout(async()=>{try{const d=await requestGet('search',{q,pin});(d.notes||[]).forEach(remote=>{const i=notes.findIndex(n=>String(n.ID)===String(remote.ID));if(i>=0)notes[i]={...notes[i],...remote};else notes.push(remote)});renderList()}catch(_){}},350);
+    searchTimer=setTimeout(async()=>{try{const d=await requestGet('search',{q,pin});(d.notes||[]).forEach(remote=>{remote={...remote,Title:cleanTitle(remote.Title)};const i=notes.findIndex(n=>String(n.ID)===String(remote.ID));if(i>=0)notes[i]={...notes[i],...remote};else notes.push(remote)});renderList()}catch(_){}},350);
   });
   clearSearchBtn.addEventListener('click',()=>{searchInput.value='';renderList();searchInput.focus()});
   refreshBtn.addEventListener('click',()=>load(true));
   newNoteBtn.addEventListener('click',createNote);
   backBtn.addEventListener('click',goBack);
   unlockBtn.addEventListener('click',unlockActive);
+  editBtn.addEventListener('click',()=>enterEdit('body'));
   saveBtn.addEventListener('click',saveAndStay);
   emailBtn.addEventListener('click',emailCurrent);
   shareBtn.addEventListener('click',shareCurrent);
   deleteBtn.addEventListener('click',deleteCurrent);
-  readBody.addEventListener('click',e=>{if(e.target.closest('a'))return;enterEdit('body')});
+  readBody.addEventListener('click',e=>{const check=e.target.closest('button[data-check-line]');if(check){e.preventDefault();e.stopPropagation();toggleChecklistLine(Number(check.dataset.checkLine));return}if(e.target.closest('a'))return;enterEdit('body')});
   titleInput.addEventListener('input',markDirty);
   bodyInput.addEventListener('input',markDirty);
   bodyInput.addEventListener('keydown',listContinue);
