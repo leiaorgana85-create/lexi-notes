@@ -38,7 +38,12 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - The Lexi Notes masthead is intentionally small, with its outline note icon after the **Lexi Notes** text and a smaller Refresh control on the right.
 - The floating **+** is an SVG control centered inside its circular button.
 - Email uses `mailto:`; Share uses the native Web Share sheet when available.
-- There is no user-facing Archive screen. Delete soft-archives the row in the Sheet so accidental deletion is recoverable.
+
+## Deletion semantics
+- **Delete in the Lexi Notes app = soft delete.** The Sheet row remains and `Archived` is set to `TRUE`, so the owner can recover it from the Sheet if needed.
+- **Physically deleting a row in the `NOTES` Google Sheet = permanent purge.** A previously synced ID that disappears from the Sheet is authoritative; the app must remove it and must not recreate it from cache or pending sync.
+- The backend keeps **no note Title or Body** for permanent-purge protection. It stores only a one-way SHA-256 hash of the random note ID in Script Properties so stale client data cannot recreate a purged row. The original deleted row/content is not retained by that mechanism.
+- A genuinely new note that has never existed on the server is not mistaken for a purge and can still sync normally.
 
 ## Responsiveness / write transport
 - Typing no longer triggers an Apps Script write after every short pause. Edits stay local while typing and sync when the owner uses Save, Back or swipe-back.
@@ -50,7 +55,7 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 - `gestures.js` is the iPhone/Home Screen interaction layer for full-surface tap-to-edit and surface swipe-back.
 - `ui-fixes.js` owns the forgiving checklist hit area and persistent empty section headings; version 2 also enhances the rendered read view with bare-domain auto-linking and saved bullet/number list layout. `ui-fixes.css` version 2 contains the matching list spacing/indent rules plus the existing list-page width/header refinements.
 - `write-transport.js` wraps only Lexi Notes Apps Script POST writes. Version 2 serializes every write for the same note ID so save/delete operations cannot overlap. If an upsert gets an ambiguous Apps Script redirect/404 response, the transport verifies the first request for longer but does **not** immediately resend it; the existing pending-upsert queue can retry later, after the first request has completed. This prevents two concurrent new-note upserts from both missing the row and appending duplicate IDs. Pin/lock/delete/setpin may still use one verified fallback resend because those actions do not create rows.
-- `sync-guard.js?v=1` is the deletion-integrity layer. It records a local tombstone before a Delete request, removes pending upserts for that ID, blocks later local upserts for a tombstoned ID, filters tombstoned IDs from list/search/get responses, and synchronizes tombstones from the backend's authoritative `deletedIds` list. This prevents stale local saves from reintroducing a deleted note.
+- `sync-guard.js?v=2` is the deletion-integrity layer. It records local delete tombstones, tracks IDs previously confirmed by the server, treats a previously-known ID disappearing from the server list as a permanent Sheet-row purge, removes pending upserts for that ID, blocks later local upserts while the tombstone is active, and still permits genuinely new unsynced IDs. Successful new-note upserts are added to the known-server-ID set immediately.
 - The read surface fills the available note viewport, horizontal overflow is suppressed, note-view bottom padding is reduced while the floating New Note button is hidden, and overscroll is contained to reduce the loose/slippery feel on iPhone.
 
 ## Backend / Sheet
@@ -58,15 +63,18 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 
 `ID | Created At | Updated At | Title | Body | Pinned | Locked | Archived | Sort Order`
 
-The live Apps Script project is bound to `LEXI Notes Data`. `backend.gs` in this repository is the source copy of that backend for review/documentation; changing the GitHub file does **not** update the installed bound Apps Script automatically.
+The live Apps Script project is bound to `LEXI Notes Data`. The live Apps Script file is the existing default **`Code.gs`**. `backend.gs` in this repository is the canonical source copy for review/documentation. To install a backend change, replace the contents of live `Code.gs` with the repository `backend.gs`; do not create a second `backend.gs` file and do not rename `Code.gs`. Then use **Deploy → Manage deployments → edit existing deployment → New version → Deploy**. A GitHub `backend.gs` commit alone does **not** update the bound Apps Script project.
 
-The 2026-10-15 deletion-integrity repair changes the repository backend so all note-row mutations are serialized with `LockService`. Normal upsert, pin and lock actions refuse archived rows; upsert can no longer set an existing archived row back to active. Pin/Lock/Delete update only their target fields instead of rewriting a stale whole row. The list response also supplies archived note IDs as `deletedIds` so the PWA can purge stale pending writes without reading archived note content. **This backend protection is not live until the bound Apps Script project is updated and a new web-app version is deployed.**
+The deletion-integrity backend serializes all note-row mutations with `LockService`. Normal upsert, pin and lock actions refuse archived rows; Pin/Lock/Delete update only their target fields instead of rewriting stale whole rows; and the list response supplies archived note IDs as `deletedIds` so the PWA can purge stale pending writes without reading archived note content.
+
+For permanent physical Sheet-row deletion, the backend also remembers each server-seen note ID only as a SHA-256 hash under the internal `LEXI_NOTES_SEEN_` Script Property prefix. If an upsert arrives for a missing row whose ID hash was previously seen, the backend rejects it as permanently deleted instead of creating a new row. This is the server-side guarantee that a manually removed Sheet row cannot return from stale app state.
 
 On 2026-10-15, three accidental duplicate Sheet rows created by the earlier client retry race were removed. For each affected ID, the newer archived canonical row was preserved, so the soft-delete audit record remains while the stale active duplicate cannot reappear in the app.
 
 Script Properties used by the live backend:
 - `LEXI_NOTES_API_KEY` — private API key; never commit the value.
 - `LEXI_NOTES_PIN_HASH` — SHA-256 hash created when the owner first establishes a note-lock PIN.
+- `LEXI_NOTES_SEEN_<SHA-256 note ID>` — internal value `1`; contains no note content and exists only to prevent a physically deleted row from being recreated.
 
 ## Lock model
 - Locking is per-note.
@@ -77,7 +85,11 @@ Script Properties used by the live backend:
 - The normal local note-index cache strips locked note bodies.
 - This is an **app-access lock, not encryption of the Google Sheet**. Direct Sheet access can still read the underlying Body cells.
 
+## Privacy / maintenance
+- After development/troubleshooting, routine maintenance should inspect schema, headers, README and metadata rather than note contents whenever possible.
+- Do not bulk-read Title or Body values unless the owner explicitly asks for content-based work or a specific task cannot be completed without it; when needed, read only the minimum cells required.
+
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass is in `app.js?v=3` and `styles.css?v=3`; app.js v3 also prevents brand-new fully blank notes from being persisted and purges orphaned fully blank pending drafts before retry. Persistent section headings, forgiving checklist touch zone, bare-domain auto-linking, saved bullet/number hanging-indent layout, and list-page sizing/header refinements are in `ui-fixes.js?v=2` / `ui-fixes.css?v=2`; serialized/idempotent client-side write handling remains in `write-transport.js?v=2`; deletion tombstone handling is in `sync-guard.js?v=1`; all are cached by service-worker shell v17. The repository `backend.gs` contains the permanent delete-resurrection repair, but the bound Apps Script still requires deployment of that source before the backend half is live. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass is in `app.js?v=3` and `styles.css?v=3`; app.js v3 also prevents brand-new fully blank notes from being persisted and purges orphaned fully blank pending drafts before retry. Persistent section headings, forgiving checklist touch zone, bare-domain auto-linking, saved bullet/number hanging-indent layout, and list-page sizing/header refinements are in `ui-fixes.js?v=2` / `ui-fixes.css?v=2`; serialized/idempotent client-side write handling remains in `write-transport.js?v=2`; physical-row deletion handling is in `sync-guard.js?v=2`; all are cached by service-worker shell v18. The owner deployed the preceding deletion-integrity backend version on 2026-10-15. The newer repository `backend.gs` adds the permanent physical-row-purge hash registry and requires one additional replacement/deployment of live `Code.gs` before that server-side addition is live. Full create/edit/pin/lock/delete/permanent-purge browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
