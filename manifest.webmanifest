@@ -7,5 +7,5 @@
   "display": "standalone",
   "background_color": "#090b0f",
   "theme_color": "#090b0f",
-  "icons": [{"src":"https://leiaorgana85-create.github.io/lexi-assets/travel-logo.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}]
+  "icons": [{"src":"https://leiaorgana85-create.github.io/lexi-assets/notes-logo.png?v=1","sizes":"512x512","type":"image/png","purpose":"any maskable"}]
 }
