@@ -19,15 +19,25 @@ The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and 
 
 ## UI
 - Dark theme.
-- Home opens directly to global search + notes list.
+- Home opens directly to global search + compact notes list.
 - Pinned notes sort first.
-- Pin and Lock controls live only on each note card in the notes list.
+- Each list row keeps title/date on the same line, a one-line preview, and outline Pin / Lock / Delete controls.
 - Existing notes open in read mode; tapping the note body enters edit mode automatically, while URLs remain clickable.
+- Swipe from the left edge toward the right while inside a note to return to the notes list. If editing, the draft is captured and sync starts in the background.
 - New notes open directly in edit mode.
 - Edit mode shows **Save** at the top right.
-- Formatting tools: bullets, numbered list, checklist, indent/outdent, undo/redo and date insert.
+- Note-body actions use consistent outline icons for Email, Share and Delete.
+- Formatting tools use matching outline icons for bullets, numbered list, checklist, outdent, indent, undo, redo and date insert.
+- The floating **+** is an SVG control centered inside its circular button.
 - Email uses `mailto:`; Share uses the native Web Share sheet when available.
 - There is no user-facing Archive screen. Delete soft-archives the row in the Sheet so accidental deletion is recoverable.
+
+## Responsiveness
+- Typing no longer triggers an Apps Script write after every short pause. Edits stay local while typing and sync when the owner uses Save, Back or swipe-back.
+- Unlocked-note edits are queued locally until the backend confirms the save, so the UI does not wait on Apps Script latency.
+- Pin and Delete update the list optimistically and roll back if the backend rejects the action.
+- Search filters the loaded local note index immediately. When a valid session PIN is available, locked-body search can still be enriched from the backend in the background.
+- Unlocking a locked note still requires a backend read because the locked body is intentionally not kept in the normal local index.
 
 ## Backend / Sheet
 `NOTES` schema:
@@ -52,4 +62,4 @@ Script Properties used by the live backend:
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and the owner has successfully authenticated it against the dedicated Lexi Notes Apps Script using the current private API key. Source, backend and Sheet remain aligned to the 9-column schema. The list-only Pin/Lock + tap-body-to-edit + top-right Save UI refinement and the dedicated `notes-logo.png` icon are deployed in the current source. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. The compact-list / outline-icon / swipe-back / explicit-save responsiveness pass is in the current source and service-worker shell v5. Full create/edit/pin/lock/delete browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
