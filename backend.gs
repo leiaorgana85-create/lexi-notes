@@ -12,7 +12,7 @@ function doGet(e) {
     const p = e.parameter || {};
     const action = String(p.action || 'list').toLowerCase();
     if (action === 'ping') return json_({ok:true, app:'Lexi Notes', pinConfigured:pinConfigured_()});
-    if (action === 'list') return json_({ok:true, notes:listNotes_(), pinConfigured:pinConfigured_()});
+    if (action === 'list') return json_({ok:true, notes:listNotes_(), deletedIds:listDeletedIds_(), pinConfigured:pinConfigured_()});
     if (action === 'get') return json_(getNote_(p.id, p.pin));
     if (action === 'search') return json_({ok:true, notes:searchNotes_(p.q, p.pin), pinConfigured:pinConfigured_()});
     return json_({ok:false,error:'Unknown action'});
@@ -66,6 +66,11 @@ function validPin_(pin) {
   return Boolean(saved && pin && hash_(pin) === saved);
 }
 function requirePin_(pin) { if (!validPin_(pin)) throw new Error('Invalid PIN'); }
+function withWriteLock_(fn) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try { return fn(); } finally { lock.releaseLock(); }
+}
 
 function rowObject_(row) {
   const o = {}; LEXI_NOTES_HEADERS.forEach((h,i)=>o[h]=row[i]); return o;
@@ -100,6 +105,9 @@ function findRow_(id) {
 function listNotes_() {
   return allRows_().map(displayObject_).filter(n=>n.ID&&!n.Archived).sort((a,b)=>Number(b.Pinned)-Number(a.Pinned)||Number(a['Sort Order']||9999)-Number(b['Sort Order']||9999)||String(b['Updated At']).localeCompare(String(a['Updated At'])));
 }
+function listDeletedIds_() {
+  return allRows_().map(rowObject_).filter(o=>o.ID&&bool_(o.Archived)).map(o=>String(o.ID));
+}
 function getNote_(id,pin) {
   const row=findRow_(id); if(!row) return {ok:false,error:'Note not found'};
   const raw=notesSheet_().getRange(row,1,1,LEXI_NOTES_HEADERS.length).getValues()[0];
@@ -123,39 +131,54 @@ function setPin_(pin,currentPin) {
   return {ok:true,pinConfigured:true};
 }
 function upsertNote_(p) {
-  const id=String(p.id||'').trim(); if(!id) return {ok:false,error:'Missing note ID'};
-  const s=notesSheet_(), row=findRow_(id), now=new Date();
-  const existing=row?s.getRange(row,1,1,LEXI_NOTES_HEADERS.length).getValues()[0]:null;
-  if(existing&&bool_(existing[6])) requirePin_(p.pin);
-  const locked=Object.prototype.hasOwnProperty.call(p,'locked')?bool_(p.locked):(existing?bool_(existing[6]):false);
-  if(locked&&!validPin_(p.pin)) throw new Error('PIN required for locked note');
-  const values=existing||[id,now,now,'','',false,false,false,9999];
-  values[0]=id; if(!values[1]) values[1]=now; values[2]=now;
-  values[3]=String(p.title||'').trim()||'Untitled Note';
-  values[4]=String(p.body||'');
-  values[5]=bool_(p.pinned); values[6]=locked; values[7]=false; if(!values[8]) values[8]=9999;
-  if(row) s.getRange(row,1,1,values.length).setValues([values]); else s.appendRow(values);
-  SpreadsheetApp.flush(); return {ok:true,id:id,updatedAt:now.toISOString(),locked:locked};
+  return withWriteLock_(()=>{
+    const id=String(p.id||'').trim(); if(!id) return {ok:false,error:'Missing note ID'};
+    const s=notesSheet_(), row=findRow_(id), now=new Date();
+    const existing=row?s.getRange(row,1,1,LEXI_NOTES_HEADERS.length).getValues()[0]:null;
+    if(existing&&bool_(existing[7])) return {ok:false,error:'Note is deleted'};
+    if(existing&&bool_(existing[6])) requirePin_(p.pin);
+    const locked=Object.prototype.hasOwnProperty.call(p,'locked')?bool_(p.locked):(existing?bool_(existing[6]):false);
+    if(locked&&!validPin_(p.pin)) throw new Error('PIN required for locked note');
+    const values=existing||[id,now,now,'','',false,false,false,9999];
+    values[0]=id; if(!values[1]) values[1]=now; values[2]=now;
+    values[3]=String(p.title||'').trim()||'Untitled Note';
+    values[4]=String(p.body||'');
+    values[5]=bool_(p.pinned); values[6]=locked; if(!values[8]) values[8]=9999;
+    if(row) s.getRange(row,1,1,values.length).setValues([values]); else s.appendRow(values);
+    SpreadsheetApp.flush(); return {ok:true,id:id,updatedAt:now.toISOString(),locked:locked};
+  });
 }
 function setPinned_(p) {
-  const row=findRow_(p.id); if(!row) return {ok:false,error:'Note not found'};
-  const s=notesSheet_(), values=s.getRange(row,1,1,LEXI_NOTES_HEADERS.length).getValues()[0];
-  values[5]=bool_(p.pinned); values[2]=new Date(); s.getRange(row,1,1,values.length).setValues([values]); SpreadsheetApp.flush();
-  return {ok:true,id:String(p.id),pinned:values[5]};
+  return withWriteLock_(()=>{
+    const row=findRow_(p.id); if(!row) return {ok:false,error:'Note not found'};
+    const s=notesSheet_(), state=s.getRange(row,6,1,3).getValues()[0];
+    if(bool_(state[2])) return {ok:false,error:'Note not found'};
+    const pinned=bool_(p.pinned), now=new Date();
+    s.getRange(row,6).setValue(pinned); s.getRange(row,3).setValue(now); SpreadsheetApp.flush();
+    return {ok:true,id:String(p.id),pinned:pinned};
+  });
 }
 function setLocked_(p) {
   if(!pinConfigured_()) return {ok:false,error:'PIN not configured'};
   requirePin_(p.pin);
-  const row=findRow_(p.id); if(!row) return {ok:false,error:'Note not found'};
-  const s=notesSheet_(), values=s.getRange(row,1,1,LEXI_NOTES_HEADERS.length).getValues()[0];
-  values[6]=bool_(p.locked); values[2]=new Date(); s.getRange(row,1,1,values.length).setValues([values]); SpreadsheetApp.flush();
-  return {ok:true,id:String(p.id),locked:values[6]};
+  return withWriteLock_(()=>{
+    const row=findRow_(p.id); if(!row) return {ok:false,error:'Note not found'};
+    const s=notesSheet_(), state=s.getRange(row,7,1,2).getValues()[0];
+    if(bool_(state[1])) return {ok:false,error:'Note not found'};
+    const locked=bool_(p.locked), now=new Date();
+    s.getRange(row,7).setValue(locked); s.getRange(row,3).setValue(now); SpreadsheetApp.flush();
+    return {ok:true,id:String(p.id),locked:locked};
+  });
 }
 function deleteNote_(p) {
-  const row=findRow_(p.id); if(!row) return {ok:true,id:String(p.id),alreadyMissing:true};
-  const s=notesSheet_(), values=s.getRange(row,1,1,LEXI_NOTES_HEADERS.length).getValues()[0];
-  if(bool_(values[6])) requirePin_(p.pin);
-  values[7]=true; values[2]=new Date(); s.getRange(row,1,1,values.length).setValues([values]); SpreadsheetApp.flush();
-  return {ok:true,id:String(p.id),archived:true};
+  return withWriteLock_(()=>{
+    const row=findRow_(p.id); if(!row) return {ok:true,id:String(p.id),alreadyMissing:true};
+    const s=notesSheet_(), state=s.getRange(row,7,1,2).getValues()[0];
+    if(bool_(state[0])) requirePin_(p.pin);
+    if(bool_(state[1])) return {ok:true,id:String(p.id),archived:true,alreadyDeleted:true};
+    const now=new Date();
+    s.getRange(row,8).setValue(true); s.getRange(row,3).setValue(now); SpreadsheetApp.flush();
+    return {ok:true,id:String(p.id),archived:true};
+  });
 }
 function json_(obj){return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);}
