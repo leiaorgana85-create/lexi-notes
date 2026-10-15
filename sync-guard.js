@@ -4,6 +4,7 @@
   const API_URL = 'https://script.google.com/macros/s/AKfycbwsZrm-TgtziRbM7AkJ538pmozw4CNsZA_tGApk6Osz-Sa9IXqvAl_SRbeMvdC-LUWK/exec';
   const PENDING_STORAGE = 'lexiNotesPendingUpsertsV1';
   const DELETED_STORAGE = 'lexiNotesDeletedIdsV1';
+  const KNOWN_SERVER_STORAGE = 'lexiNotesKnownServerIdsV1';
   const TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1000;
   const downstreamFetch = window.fetch.bind(window);
 
@@ -37,15 +38,44 @@
     writeDeleted(records);
   }
 
-  function syncDeleted(ids) {
+  function readKnownServerIds() {
+    return readJsonStorage(KNOWN_SERVER_STORAGE, {});
+  }
+
+  function writeKnownServerIds(ids) {
     const next = {};
-    const now = Date.now();
     (Array.isArray(ids) ? ids : []).forEach(id => {
+      if (id) next[String(id)] = 1;
+    });
+    localStorage.setItem(KNOWN_SERVER_STORAGE, JSON.stringify(next));
+  }
+
+  function addKnownServerId(id) {
+    if (!id) return;
+    const known = readKnownServerIds();
+    known[String(id)] = 1;
+    localStorage.setItem(KNOWN_SERVER_STORAGE, JSON.stringify(known));
+  }
+
+  function syncServerState(activeIds, archivedIds) {
+    const current = [...new Set([...(activeIds || []), ...(archivedIds || [])].filter(Boolean).map(String))];
+    const currentSet = new Set(current);
+    const previous = readKnownServerIds();
+
+    Object.keys(previous).forEach(id => {
+      if (!currentSet.has(id)) {
+        markDeleted(id);
+        clearPending(id);
+      }
+    });
+
+    (archivedIds || []).forEach(id => {
       if (!id) return;
-      next[String(id)] = now;
+      markDeleted(String(id));
       clearPending(String(id));
     });
-    writeDeleted(next);
+
+    writeKnownServerIds(current);
   }
 
   function isDeleted(id) {
@@ -86,12 +116,45 @@
     try {
       const data = await response.clone().json();
       if (data && data.ok && Array.isArray(data.notes)) {
-        if (action === 'list' && Array.isArray(data.deletedIds)) syncDeleted(data.deletedIds);
+        if (action === 'list') {
+          const activeIds = data.notes.map(note => note && note.ID).filter(Boolean);
+          const archivedIds = Array.isArray(data.deletedIds) ? data.deletedIds : [];
+          syncServerState(activeIds, archivedIds);
+        }
         data.notes = data.notes.filter(note => !isDeleted(note && note.ID));
         return jsonResponse(data);
       }
     } catch (_) {
       // Preserve the original response if it is not a normal JSON payload.
+    }
+    return response;
+  }
+
+  async function guardedPost(input, init, params) {
+    const action = String(params.get('action') || '').toLowerCase();
+    const id = params.get('id') || '';
+
+    if (action === 'delete' && id) {
+      markDeleted(id);
+      clearPending(id);
+    }
+    if (action === 'upsert' && id && isDeleted(id)) {
+      clearPending(id);
+      return jsonResponse({ ok: false, error: 'Note is deleted' });
+    }
+
+    const response = await downstreamFetch(input, init);
+    if (action !== 'upsert' || !id) return response;
+
+    try {
+      const data = await response.clone().json();
+      if (data && data.ok === true) addKnownServerId(id);
+      if (data && data.ok === false && /permanently deleted/i.test(String(data.error || ''))) {
+        markDeleted(id);
+        clearPending(id);
+      }
+    } catch (_) {
+      // The normal write transport handles non-JSON/redirect behavior.
     }
     return response;
   }
@@ -109,19 +172,6 @@
     if (method === 'GET') return filteredRead(input, init, parsed);
     if (method !== 'POST') return downstreamFetch(input, init);
 
-    const params = bodyParams(init);
-    const action = String(params.get('action') || '').toLowerCase();
-    const id = params.get('id') || '';
-
-    if (action === 'delete' && id) {
-      markDeleted(id);
-      clearPending(id);
-    }
-    if (action === 'upsert' && id && isDeleted(id)) {
-      clearPending(id);
-      return Promise.resolve(jsonResponse({ ok: false, error: 'Note is deleted' }));
-    }
-
-    return downstreamFetch(input, init);
+    return guardedPost(input, init, bodyParams(init));
   };
 })();
