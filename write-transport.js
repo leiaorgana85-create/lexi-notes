@@ -3,6 +3,7 @@
 
   const API_URL = 'https://script.google.com/macros/s/AKfycbwsZrm-TgtziRbM7AkJ538pmozw4CNsZA_tGApk6Osz-Sa9IXqvAl_SRbeMvdC-LUWK/exec';
   const nativeFetch = window.fetch.bind(window);
+  const writeQueues = new Map();
   const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const isTrue = value => value === true || String(value || '').toLowerCase() === 'true';
   const cleanTitle = value => String(value || '').trim() === 'Untitled Note' ? '' : String(value || '');
@@ -40,7 +41,7 @@
     const id = params.get('id') || '';
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-      if (attempt) await delay(300 + attempt * 150);
+      if (attempt) await delay(350 + attempt * 180);
       try {
         if (action === 'upsert') {
           const data = await getJson({ key, action: 'get', id, pin: params.get('pin') || '' });
@@ -71,12 +72,14 @@
     throw new Error('Write could not be verified');
   }
 
-  window.fetch = async function patchedFetch(input, init = {}) {
-    const url = typeof input === 'string' ? input : input && input.url;
-    const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
-    if (url !== API_URL || method !== 'POST') return nativeFetch(input, init);
+  function queueKey(params) {
+    const id = params.get('id') || '';
+    const action = String(params.get('action') || '').toLowerCase();
+    return id ? `note:${id}` : `action:${action || 'post'}`;
+  }
 
-    const params = bodyParams(init);
+  async function performPost(input, init, params) {
+    const action = String(params.get('action') || '').toLowerCase();
     let firstError = null;
     try {
       const response = await nativeFetch(input, init);
@@ -87,13 +90,26 @@
     }
 
     // Apps Script ContentService responses redirect to script.googleusercontent.com.
-    // iOS Home Screen mode can surface the redirected POST response as a 404 even
-    // after the write executed. Verify before retrying to avoid duplicate writes.
+    // iOS Home Screen mode can surface the redirected response as 404/network error
+    // even after the write executed. An upsert must NEVER be resent immediately:
+    // two overlapping creates with the same client ID can both miss findRow_ and append.
+    if (action === 'upsert') {
+      try {
+        const verified = await verifyWrite(params, 8);
+        return jsonResponse(verified);
+      } catch (_) {
+        // Leave the app's existing pending-upsert record in place. A later refresh
+        // retries sequentially, after the ambiguous first request has finished.
+        throw firstError || new Error('Write could not be verified');
+      }
+    }
+
+    // Pin/lock/delete/setpin do not create a new row, so one fallback resend is safe.
     try {
-      const verified = await verifyWrite(params, 2);
+      const verified = await verifyWrite(params, 3);
       return jsonResponse(verified);
     } catch (_) {
-      // Not visible yet: resend as a simple no-CORS POST, then verify via GET.
+      // Not visible yet: one simple no-CORS retry, then verify via GET.
     }
 
     try {
@@ -104,10 +120,26 @@
         redirect: 'follow',
         mode: 'no-cors'
       });
-      const verified = await verifyWrite(params, 4);
+      const verified = await verifyWrite(params, 6);
       return jsonResponse(verified);
     } catch (_) {
       throw firstError || new Error('Write could not be verified');
     }
+  }
+
+  window.fetch = function patchedFetch(input, init = {}) {
+    const url = typeof input === 'string' ? input : input && input.url;
+    const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+    if (url !== API_URL || method !== 'POST') return nativeFetch(input, init);
+
+    const params = bodyParams(init);
+    const key = queueKey(params);
+    const previous = writeQueues.get(key) || Promise.resolve();
+    const task = previous.catch(() => {}).then(() => performPost(input, init, params));
+    writeQueues.set(key, task);
+    task.finally(() => {
+      if (writeQueues.get(key) === task) writeQueues.delete(key);
+    });
+    return task;
   };
 })();
