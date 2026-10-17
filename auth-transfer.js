@@ -12,6 +12,7 @@
   let bridgeReady = null;
   let bridgeReadyResolve = null;
   let nextId = 1;
+  let pendingRelinkCredential = '';
   const pending = new Map();
 
   const currentKey = () => {
@@ -62,6 +63,7 @@
   window.addEventListener('message', event => {
     const d = event.data || {};
     if (d.type === 'lexi-notes-google-auth-ready') {
+      if (!bridgeFrame?.contentWindow || event.source !== bridgeFrame.contentWindow) return;
       if (!allowedBridgeOrigin(event.origin)) return;
       bridgeTarget = event.source;
       bridgeOrigin = event.origin;
@@ -79,7 +81,7 @@
     d.ok ? item.resolve(d.result) : item.reject(new Error(d.error || 'Google authorization failed.'));
   });
 
-  async function bootstrapWithGoogle(credential) {
+  async function bootstrapWithGoogle(credential, allowRelink = false) {
     await waitBridge();
     return new Promise((resolve, reject) => {
       const id = `notes-auth-${Date.now()}-${nextId++}`;
@@ -92,7 +94,8 @@
         type: 'lexi-notes-google-auth',
         id,
         credential,
-        currentKey: currentKey()
+        currentKey: currentKey(),
+        allowRelink: Boolean(allowRelink)
       }, bridgeOrigin);
     });
   }
@@ -117,6 +120,16 @@
     });
   }
 
+  function applyResult(result, overlay) {
+    const key = String(result?.key || '').trim();
+    if (!result?.ok || !key) throw new Error('Lexi Notes access was not returned.');
+    localStorage.setItem(KEY_STORAGE, key);
+    localStorage.setItem(GOOGLE_LINK_MARKER, '1');
+    pendingRelinkCredential = '';
+    overlay.style.display = 'none';
+    window.location.reload();
+  }
+
   function ensureOverlay() {
     let overlay = document.getElementById('lexiNotesGoogleGate');
     if (overlay) return overlay;
@@ -124,11 +137,30 @@
     overlay = document.createElement('div');
     overlay.id = 'lexiNotesGoogleGate';
     overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;display:none;align-items:center;justify-content:center;padding:22px;background:rgba(9,11,15,.92);backdrop-filter:blur(6px)';
-    overlay.innerHTML = `<div style="width:min(380px,100%);background:#141820;color:#f4f5f7;border:1px solid #2a313d;border-radius:16px;padding:20px;box-shadow:0 18px 60px rgba(0,0,0,.36);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"><h2 style="margin:0 0 8px;font-size:20px">Connect Google</h2><p id="lexiNotesGoogleCopy" style="margin:0 0 15px;color:#aab2bf;font-size:13px;line-height:1.45"></p><div id="lexiNotesGoogleButton" style="min-height:44px;display:flex;justify-content:center"></div><div id="lexiNotesGoogleError" style="min-height:20px;margin-top:9px;color:#ff9b9b;font-size:12px"></div><button id="lexiNotesGoogleLater" type="button" style="width:100%;min-height:38px;margin-top:4px;border:1px solid #343c48;border-radius:9px;background:transparent;color:#f4f5f7">Use API key instead</button></div>`;
+    overlay.innerHTML = `<div style="width:min(380px,100%);background:#141820;color:#f4f5f7;border:1px solid #2a313d;border-radius:16px;padding:20px;box-shadow:0 18px 60px rgba(0,0,0,.36);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"><h2 style="margin:0 0 8px;font-size:20px">Connect Google</h2><p id="lexiNotesGoogleCopy" style="margin:0 0 15px;color:#aab2bf;font-size:13px;line-height:1.45"></p><div id="lexiNotesGoogleButton" style="min-height:44px;display:flex;justify-content:center"></div><div id="lexiNotesGoogleError" style="min-height:20px;margin-top:9px;color:#ff9b9b;font-size:12px"></div><button id="lexiNotesGoogleRelink" type="button" hidden style="width:100%;min-height:38px;margin:4px 0 6px;border:1px solid #343c48;border-radius:9px;background:transparent;color:#f4f5f7">Relink this Google account</button><button id="lexiNotesGoogleLater" type="button" style="width:100%;min-height:38px;margin-top:4px;border:1px solid #343c48;border-radius:9px;background:transparent;color:#f4f5f7">Use API key instead</button></div>`;
     document.body.appendChild(overlay);
+
     overlay.querySelector('#lexiNotesGoogleLater').addEventListener('click', () => {
+      pendingRelinkCredential = '';
       overlay.style.display = 'none';
       document.getElementById('connectView')?.removeAttribute('hidden');
+    });
+
+    const relink = overlay.querySelector('#lexiNotesGoogleRelink');
+    relink.addEventListener('click', async () => {
+      const credential = pendingRelinkCredential;
+      const error = overlay.querySelector('#lexiNotesGoogleError');
+      if (!credential || !currentKey()) return;
+      relink.disabled = true;
+      error.textContent = '';
+      try {
+        const result = await bootstrapWithGoogle(credential, true);
+        applyResult(result, overlay);
+      } catch (e) {
+        error.textContent = e?.message || 'Could not relink Google.';
+      } finally {
+        relink.disabled = false;
+      }
     });
     return overlay;
   }
@@ -136,6 +168,9 @@
   async function showGoogleGate() {
     const overlay = ensureOverlay();
     const hasKey = Boolean(currentKey());
+    const relink = overlay.querySelector('#lexiNotesGoogleRelink');
+    pendingRelinkCredential = '';
+    relink.hidden = true;
     overlay.querySelector('#lexiNotesGoogleCopy').textContent = hasKey
       ? 'Connect your Google account once so future Home Screen installs can restore access without typing the API key.'
       : 'Use your linked Google account to restore Lexi Notes access on this install.';
@@ -151,17 +186,20 @@
       google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: async response => {
+          const credential = String(response?.credential || '');
           error.textContent = '';
+          relink.hidden = true;
+          pendingRelinkCredential = '';
           try {
-            const result = await bootstrapWithGoogle(String(response?.credential || ''));
-            const key = String(result?.key || '').trim();
-            if (!result?.ok || !key) throw new Error('Lexi Notes access was not returned.');
-            localStorage.setItem(KEY_STORAGE, key);
-            localStorage.setItem(GOOGLE_LINK_MARKER, '1');
-            overlay.style.display = 'none';
-            window.location.reload();
+            const result = await bootstrapWithGoogle(credential, false);
+            applyResult(result, overlay);
           } catch (e) {
-            error.textContent = e?.message || 'Could not connect Google.';
+            const message = e?.message || 'Could not connect Google.';
+            error.textContent = message;
+            if (/not linked to Lexi Notes/i.test(message) && currentKey()) {
+              pendingRelinkCredential = credential;
+              relink.hidden = false;
+            }
           }
         }
       });
