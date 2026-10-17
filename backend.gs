@@ -63,7 +63,7 @@ function requireApiKey_(key) {
   if (!saved || String(key || '') !== saved) throw new Error('Unauthorized');
 }
 
-function authGoogleBootstrap(credential, currentKey) {
+function authGoogleBootstrap(credential, currentKey, allowRelink) {
   const identity = verifyLexiNotesGoogleCredential_(credential);
   const props = PropertiesService.getScriptProperties();
   const savedKey = props.getProperty('LEXI_NOTES_API_KEY');
@@ -71,6 +71,7 @@ function authGoogleBootstrap(credential, currentKey) {
 
   const linkedSub = String(props.getProperty(LEXI_NOTES_GOOGLE_SUB_PROPERTY) || '').trim();
   let linkedNow = false;
+  let relinked = false;
 
   if (!linkedSub) {
     if (String(currentKey || '').trim() !== savedKey) {
@@ -79,12 +80,19 @@ function authGoogleBootstrap(credential, currentKey) {
     props.setProperty(LEXI_NOTES_GOOGLE_SUB_PROPERTY, identity.sub);
     linkedNow = true;
   } else if (identity.sub !== linkedSub) {
-    throw new Error('This Google account is not linked to Lexi Notes.');
+    if (!allowRelink) {
+      throw new Error('This Google account is not linked to Lexi Notes.');
+    }
+    if (String(currentKey || '').trim() !== savedKey) {
+      throw new Error('Relinking Google requires the current Notes API key on this device.');
+    }
+    props.setProperty(LEXI_NOTES_GOOGLE_SUB_PROPERTY, identity.sub);
+    relinked = true;
   }
 
   props.deleteProperty(LEXI_NOTES_INSTALL_HASH_PROPERTY);
   props.deleteProperty(LEXI_NOTES_INSTALL_EXPIRES_PROPERTY);
-  return {ok:true,key:savedKey,linkedNow:linkedNow};
+  return {ok:true,key:savedKey,linkedNow:linkedNow,relinked:relinked};
 }
 
 function verifyLexiNotesGoogleCredential_(credential) {
@@ -124,7 +132,7 @@ function notesAuthBridgeHtml_() {
     google.script.run
       .withSuccessHandler(result => post(String(d.id),true,result,''))
       .withFailureHandler(error => post(String(d.id),false,null,error && error.message ? error.message : String(error)))
-      .authGoogleBootstrap(String(d.credential || ''), String(d.currentKey || ''));
+      .authGoogleBootstrap(String(d.credential || ''), String(d.currentKey || ''), Boolean(d.allowRelink));
   });
   window.top.postMessage({type:'lexi-notes-google-auth-ready'},PARENT_ORIGIN);
 })();
