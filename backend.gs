@@ -10,12 +10,17 @@
 const LEXI_NOTES_SHEET = 'NOTES';
 const LEXI_NOTES_HEADERS = ['ID','Created At','Updated At','Title','Body','Pinned','Locked','Archived','Sort Order'];
 const LEXI_NOTES_SEEN_PREFIX = 'LEXI_NOTES_SEEN_';
+const LEXI_NOTES_INSTALL_HASH_PROPERTY = 'LEXI_NOTES_INSTALL_TOKEN_HASH_V1';
+const LEXI_NOTES_INSTALL_EXPIRES_PROPERTY = 'LEXI_NOTES_INSTALL_TOKEN_EXPIRES_V1';
+const LEXI_NOTES_INSTALL_TTL_MS = 10 * 60 * 1000;
 
 function doGet(e) {
   try {
-    requireApiKey_(e && e.parameter ? e.parameter.key : '');
-    const p = e.parameter || {};
+    const p = e && e.parameter ? e.parameter : {};
     const action = String(p.action || 'list').toLowerCase();
+    if (action === 'authmint') return json_(mintInstallToken_(p.key));
+    if (action === 'authredeem') return json_(redeemInstallToken_(p.token));
+    requireApiKey_(p.key);
     if (action === 'ping') return json_({ok:true, app:'Lexi Notes', pinConfigured:pinConfigured_()});
     if (action === 'list') {
       const state = listState_();
@@ -56,6 +61,38 @@ function notesSheet_() {
 function requireApiKey_(key) {
   const saved = PropertiesService.getScriptProperties().getProperty('LEXI_NOTES_API_KEY');
   if (!saved || String(key || '') !== saved) throw new Error('Unauthorized');
+}
+
+function mintInstallToken_(suppliedKey) {
+  const props = PropertiesService.getScriptProperties();
+  const saved = props.getProperty('LEXI_NOTES_API_KEY');
+  if (!saved || String(suppliedKey || '') !== saved) return {ok:false,error:'Unauthorized'};
+  const token='lxi1.'+Utilities.getUuid().replace(/-/g,'')+Utilities.getUuid().replace(/-/g,'');
+  const expiresAt=Date.now()+LEXI_NOTES_INSTALL_TTL_MS;
+  props.setProperties({
+    [LEXI_NOTES_INSTALL_HASH_PROPERTY]:hash_(token),
+    [LEXI_NOTES_INSTALL_EXPIRES_PROPERTY]:String(expiresAt)
+  },false);
+  return {ok:true,token:token,expiresAt:new Date(expiresAt).toISOString()};
+}
+
+function redeemInstallToken_(token) {
+  const value=String(token||'').trim();
+  if(!value) return {ok:false,error:'Missing install token'};
+  const props=PropertiesService.getScriptProperties();
+  const savedHash=props.getProperty(LEXI_NOTES_INSTALL_HASH_PROPERTY);
+  const expiresAt=Number(props.getProperty(LEXI_NOTES_INSTALL_EXPIRES_PROPERTY)||0);
+  if(!savedHash||!expiresAt||Date.now()>expiresAt){
+    props.deleteProperty(LEXI_NOTES_INSTALL_HASH_PROPERTY);
+    props.deleteProperty(LEXI_NOTES_INSTALL_EXPIRES_PROPERTY);
+    return {ok:false,error:'Install token expired'};
+  }
+  if(hash_(value)!==savedHash) return {ok:false,error:'Invalid install token'};
+  const saved=props.getProperty('LEXI_NOTES_API_KEY');
+  props.deleteProperty(LEXI_NOTES_INSTALL_HASH_PROPERTY);
+  props.deleteProperty(LEXI_NOTES_INSTALL_EXPIRES_PROPERTY);
+  if(!saved) return {ok:false,error:'API key is not configured'};
+  return {ok:true,key:saved};
 }
 
 function bool_(value) { return value === true || String(value || '').trim().toLowerCase() === 'true'; }
