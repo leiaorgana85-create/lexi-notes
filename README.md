@@ -17,6 +17,17 @@ Standalone fast-access personal notes PWA for the Lexi Apps Ecosystem.
 
 The app uses its own private `LEXI_NOTES_API_KEY`, separate from Lexi Spend and Lexi Travel. Never commit that key to GitHub.
 
+## Authentication / Home Screen replacement
+- The private Notes API key remains the backend root/recovery credential and stays device-local when entered manually.
+- Google account linking is a reinstall bootstrap convenience: the first link requires a valid existing Notes API key; later fresh Home Screen installs can use the already-linked Google account to recover access without finding and pasting the API key.
+- Google is **not** requested on every normal app launch. A fresh installation may require one Google tap.
+- The linked identity stored in Apps Script is the Google account's stable `sub` identifier, not a Google password or access token.
+- The hidden Apps Script authorization bridge accepts READY only from the exact iframe created by the PWA and from an allowed Google/Apps-Script origin; subsequent replies must come from that same window/origin.
+- A different Google account is rejected by default. Relinking is exposed only after an account-mismatch response and only when the device already holds the valid Notes API key; the owner must explicitly tap **Relink this Google account**.
+- The temporary cookie-transfer design is retired. No API key or install bearer token is intentionally transferred through a GitHub Pages cookie.
+- `backend.gs` and `auth-transfer.js` contain the 2026-10-17 hardening. Because the Apps Script project is bound, the backend change is not live until the owner replaces live `Code.gs` with current `backend.gs` and deploys a new version of the existing web app.
+- End-to-end iPhone replacement verification is still pending; do not mark the reinstall flow verified until that test passes.
+
 ## UI
 - Dark theme.
 - Home opens directly to global search plus separate **Pinned** and **Notes** sections.
@@ -75,6 +86,7 @@ Script Properties used by the live backend:
 - `LEXI_NOTES_API_KEY` — private API key; never commit the value.
 - `LEXI_NOTES_PIN_HASH` — SHA-256 hash created when the owner first establishes a note-lock PIN.
 - `LEXI_NOTES_SEEN_<SHA-256 note ID>` — internal value `1`; contains no note content and exists only to prevent a physically deleted row from being recreated.
+- `LEXI_NOTES_GOOGLE_SUB_V1` — stable Google account `sub` linked for reinstall bootstrap; changing it requires an explicit relink backed by a valid Notes API key.
 
 ## Lock model
 - Locking is per-note.
@@ -92,4 +104,4 @@ Script Properties used by the live backend:
 ## Deployment
 Static PWA files live at the repository root and deploy from the `main` branch root through GitHub Pages.
 
-Current status (2026-10-15): the standalone GitHub Pages app is live and authenticated against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass is in `app.js?v=3` and `styles.css?v=3`; app.js v3 also prevents brand-new fully blank notes from being persisted and purges orphaned fully blank pending drafts before retry. Persistent section headings, forgiving checklist touch zone, bare-domain auto-linking, saved bullet/number hanging-indent layout, and list-page sizing/header refinements are in `ui-fixes.js?v=2` / `ui-fixes.css?v=2`; serialized/idempotent client-side write handling remains in `write-transport.js?v=2`; physical-row deletion handling is in `sync-guard.js?v=2`; all are cached by service-worker shell v18. The owner deployed the current permanent physical-row-purge backend into live `Code.gs` through the existing web-app deployment on 2026-10-15. Live end-to-end permanent-purge behavior verification remains pending. Full create/edit/pin/lock/delete/permanent-purge browser/Sheet smoke testing must still pass before the temporary `lexi-travel/notes-app/` copy is removed.
+Current status (2026-10-17): the standalone GitHub Pages app is live against the dedicated Lexi Notes Apps Script. Full-surface tap-to-edit and surface swipe-back remain in `gestures.js?v=3`. The sectioned-list / blank-title / explicit-Edit / clickable-checklist / compact-Save pass is in `app.js?v=3` and `styles.css?v=3`; persistent section headings, forgiving checklist touch zone, bare-domain auto-linking, saved bullet/number hanging-indent layout and list-page sizing/header refinements remain in `ui-fixes.js?v=2` / `ui-fixes.css?v=2`; serialized/idempotent client-side write handling remains in `write-transport.js?v=2`; physical-row deletion handling remains in `sync-guard.js?v=2`. The current service-worker shell is **v20**. The 2026-10-17 Google reinstall-auth hardening is committed in the repository; the owner still must redeploy the current `backend.gs` into live `Code.gs` before the iPhone auth/reinstall verification. The permanent-purge backend had already been deployed and verified previously; the new auth-specific end-to-end phone test remains pending.
