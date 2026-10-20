@@ -1,0 +1,22 @@
+/* Small interaction overrides layered on the stable Lexi Notes UI. */
+.read-line.check{min-height:34px;align-items:center}
+.check-toggle{width:40px;height:38px;min-width:40px;margin:-7px -7px -7px -8px}
+.check-toggle svg{width:20px;height:20px}
+.read-line.list-line{display:flex;align-items:flex-start;gap:9px}
+.read-line.list-line>.marker{flex:0 0 24px;min-width:24px;margin:0;text-align:right}
+.read-line.bullet-line>.marker{text-align:center}
+.read-line.list-line>span:last-child{min-width:0;flex:1}
+.persistent-empty-section{gap:0}
+.persistent-empty-section .note-section-list{display:none}
+
+/* List-page layout: keep header/search/list on the same content width. */
+.brand-title{flex-direction:row-reverse;justify-content:flex-end}
+#refreshBtn{width:28px;height:28px;border-radius:8px}
+#refreshBtn svg{width:15px;height:15px}
+.search-wrap,#listView,.notes-list,.note-list-section,.note-section-list,.note-card,.note-card-inner{width:100%;max-width:100%;min-width:0}
+.notes-list,.note-list-section,.note-section-list{overflow:hidden}
+.note-card{overflow:hidden}
+.note-card-inner{min-width:0}
+.note-main,.note-open-btn,.note-title-row,.note-title,.note-preview{min-width:0;max-width:100%;overflow:hidden}
+.note-card-controls{flex:0 0 auto}
+@media(max-width:430px){#refreshBtn{width:26px;height:26px}#refreshBtn svg{width:14px;height:14px}}
