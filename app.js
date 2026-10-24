@@ -4,6 +4,7 @@
   const KEY_STORAGE = 'lexiNotesApiKey';
   const CACHE_STORAGE = 'lexiNotesIndexCacheV1';
   const PENDING_STORAGE = 'lexiNotesPendingUpsertsV1';
+  const DELETE_STORAGE = 'lexiNotesPendingDeletesV1';
   const VIEW_STORAGE = 'lexiNotesLastViewV1';
   const PIN_SESSION = 'lexiNotesPinSessionV1';
 
@@ -49,12 +50,15 @@
     if(token&&current._pendingToken&&current._pendingToken!==token)return false;
     delete p[id];writePending(p);return true;
   }
+  function readPendingDeletes(){try{return JSON.parse(localStorage.getItem(DELETE_STORAGE)||'{}')||{}}catch(_){return {}}}
+  function locallyDeleted(id){return Boolean(readPendingDeletes()[id]||window.lexiNotesIsDeleted?.(id))}
   function noteInteraction(){interactionRevision+=1}
-  function saveCache(){const safe=notes.map(n=>({...n,Body:isTrue(n.Locked)?'':String(n.Body||'')}));localStorage.setItem(CACHE_STORAGE,JSON.stringify({savedAt:Date.now(),notes:safe,pinConfigured}))}
+  function saveCache(){const safe=notes.filter(n=>!locallyDeleted(n.ID)).map(n=>({...n,Body:isTrue(n.Locked)?'':String(n.Body||'')}));localStorage.setItem(CACHE_STORAGE,JSON.stringify({savedAt:Date.now(),notes:safe,pinConfigured}))}
   function mergePending(serverNotes){
     const merged=Array.isArray(serverNotes)?serverNotes.map(n=>({...n,Title:cleanTitle(n.Title)})):[];
     const pending=readPending(),serverIds=new Set(merged.map(n=>String(n.ID))),entries=Object.entries(pending);let changed=false;
     entries.forEach(([id,p])=>{
+      if(locallyDeleted(id)){delete pending[id];changed=true;return}
       if(!serverIds.has(String(id))&&isBlankNote(p.title,p.body)){delete pending[id];changed=true;return}
       const i=merged.findIndex(n=>String(n.ID)===String(p.id));
       if(i>=0&&isTrue(merged[i].Locked))return;
@@ -62,29 +66,48 @@
       if(i>=0)merged[i]={...merged[i],...local};else merged.unshift(local);
     });
     if(changed)writePending(pending);
-    return merged;
+    return merged.filter(n=>!locallyDeleted(n.ID));
   }
-  let pendingFlight=null;
+  let pendingFlight=null, syncing=false, lastSyncError='';
   function updateSyncStatus(){
-    const count=Object.keys(readPending()).length;
-    syncStatus.textContent=navigator.onLine===false?(count?'Offline · saved on device · sync pending':'Offline · saved notes available'):(count?'Saved on device · sync pending':'Synced');
+    const count=Object.keys(readPending()).length+Object.keys(readPendingDeletes()).length;
+    syncStatus.textContent=navigator.onLine===false
+      ?(count?`Offline · ${count} saved on device · sync pending`:'Offline · saved notes available')
+      :count
+        ?syncing?`Syncing · ${count} change${count===1?'':'s'} remaining`
+          :lastSyncError?`Saved on device · ${count} pending · ${lastSyncError}`:`Saved on device · ${count} pending`
+        :'Synced';
   }
   function flushPending(){
     if(navigator.onLine===false){updateSyncStatus();return Promise.resolve()}
     if(pendingFlight)return pendingFlight;
-    pendingFlight=drainPending().finally(()=>{pendingFlight=null;updateSyncStatus()});
+    syncing=true;lastSyncError='';updateSyncStatus();
+    pendingFlight=drainPending().finally(()=>{pendingFlight=null;syncing=false;updateSyncStatus()});
     return pendingFlight;
   }
   async function drainPending(){
+    for(const [id,entry] of Object.entries(readPendingDeletes())){
+      if(navigator.onLine===false)return;
+      try{
+        const pin=entry.locked?sessionPin():'';
+        if(entry.locked&&!pin)throw new Error('PIN needed to finish deleting locked note');
+        await requestPost('delete',{id,pin});
+        const latest=readPendingDeletes();
+        if(latest[id]?.token===entry.token){delete latest[id];localStorage.setItem(DELETE_STORAGE,JSON.stringify(latest))}
+        updateSyncStatus();
+      }catch(error){lastSyncError=String(error.message||'Connection failed')}
+    }
     const pending=readPending(), entries=Object.entries(pending);
     if(!entries.length)return;
     for(const [id] of entries){
       // Re-read after each await: typing may have replaced a queued version.
       while(navigator.onLine!==false){
+        if(locallyDeleted(id)){clearPending(id);break}
         const p=readPending()[id];if(!p)break;
         const token=p._pendingToken||'';
-        try{await requestPost('upsert',pendingPayload(p));clearPending(id,token)}
-        catch(_){return}
+        try{await requestPost('upsert',pendingPayload(p));clearPending(id,token);updateSyncStatus()}
+        catch(error){lastSyncError=String(error.message||'Connection failed');break}
+
       }
     }
   }
@@ -102,7 +125,7 @@
     const key=localStorage.getItem(KEY_STORAGE);if(!key)throw new Error('Not connected');
     const url=new URL(API_URL);url.searchParams.set('key',key);url.searchParams.set('action',action);url.searchParams.set('_',String(Date.now()));
     Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')url.searchParams.set(k,String(v))});
-    const r=await fetch(url,{cache:'no-store',redirect:'follow'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();if(!d.ok)throw new Error(d.error||'Request failed');return d;
+    const r=await fetch(url.toString(),{cache:'no-store',redirect:'follow'});if(!r.ok)throw new Error(`HTTP ${r.status}`);const d=await r.json();if(!d.ok)throw new Error(d.error||'Request failed');return d;
   }
   async function requestPost(action,params={}){
     if(!apiReady()) throw new Error('Backend not deployed yet');
@@ -144,7 +167,7 @@
   }
   function renderList(){
     const q=searchInput.value.trim().toLowerCase();clearSearchBtn.hidden=!q;
-    const data=notes.filter(n=>!isTrue(n.Archived)).filter(n=>!q||`${n.Title||''}\n${isTrue(n.Locked)?'':n.Body||''}`.toLowerCase().includes(q)).sort((a,b)=>Date.parse(b['Updated At']||0)-Date.parse(a['Updated At']||0));
+    const data=notes.filter(n=>!isTrue(n.Archived)&&!locallyDeleted(n.ID)).filter(n=>!q||`${n.Title||''}\n${isTrue(n.Locked)?'':n.Body||''}`.toLowerCase().includes(q)).sort((a,b)=>Date.parse(b['Updated At']||0)-Date.parse(a['Updated At']||0));
     const pinned=data.filter(n=>isTrue(n.Pinned)),regular=data.filter(n=>!isTrue(n.Pinned));
     notesList.replaceChildren();emptyState.hidden=data.length>0;emptyState.textContent=q?'No notes match your search.':'No notes yet.';
     appendSection('Pinned',pinned);appendSection('Notes',regular);
@@ -229,10 +252,16 @@
     if(!note||!confirm(`Delete ${note.Title?`“${note.Title}”`:'this note'}?`))return;noteInteraction();
     let pin='';if(isTrue(note.Locked)){pin=sessionPin()||await askPin('unlock');if(!pin)return}
     const index=notes.findIndex(n=>String(n.ID)===String(note.ID));if(index<0)return;
+    const deletes=readPendingDeletes();
+    deletes[note.ID]={token:pendingToken(),locked:isTrue(note.Locked)};
+    localStorage.setItem(DELETE_STORAGE,JSON.stringify(deletes));
+    clearPending(note.ID);
     notes.splice(index,1);saveCache();if(fromDetail)showList();else renderList();
-    try{await requestPost('delete',{id:note.ID,pin});clearPending(note.ID);showToast('Deleted')}
-    catch(e){notes.splice(Math.min(index,notes.length),0,note);saveCache();renderList();showToast(`Delete failed: ${e.message}`,true)}
+    updateSyncStatus();
+    await flushPending();
+    showToast(readPendingDeletes()[note.ID]?'Deleted on device · sync pending':'Deleted');
   }
+
   function deleteCurrent(){const n=current();if(n)deleteNote(n,true)}
   function exportText(n){return [cleanTitle(n.Title).trim(),String(n.Body||'').trim()].filter(Boolean).join('\n\n')}
   function emailCurrent(){const n=current();if(n)location.href=`mailto:?subject=${encodeURIComponent(cleanTitle(n.Title)||'Lexi Note')}&body=${encodeURIComponent(exportText(n))}`}
@@ -255,8 +284,8 @@
     if(show)syncStatus.textContent='Refreshing…';
     try{
       const d=await requestGet('list');pinConfigured=Boolean(d.pinConfigured);
-      if(interactionRevision!==startedRevision||!editMode.hidden){updateSyncStatus();flushPending();return}
-      notes=mergePending(Array.isArray(d.notes)?d.notes:[]);saveCache();restoreLastView();updateSyncStatus();flushPending();
+      if(interactionRevision!==startedRevision||!editMode.hidden){updateSyncStatus();await flushPending();return}
+      notes=mergePending(Array.isArray(d.notes)?d.notes:[]);saveCache();restoreLastView();updateSyncStatus();await flushPending();
     }catch(e){
       if(e.message==='Unauthorized'){localStorage.removeItem(KEY_STORAGE);showConnect('The API key was not accepted.');return}
       if(interactionRevision!==startedRevision){syncStatus.textContent=`Sync delayed · ${e.message}`;return}
@@ -300,6 +329,6 @@
     if(document.visibilityState==='visible')load(false);
   });
   window.addEventListener('pagehide',()=>{if(dirty)markDirty()});
-  setInterval(()=>{if(document.visibilityState!=='hidden'&&navigator.onLine!==false&&Object.keys(readPending()).length)load(false)},30000);
+  setInterval(()=>{if(document.visibilityState!=='hidden'&&navigator.onLine!==false&&(Object.keys(readPending()).length||Object.keys(readPendingDeletes()).length))load(false)},30000);
   if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 })();

@@ -57,10 +57,9 @@
     localStorage.setItem(KNOWN_SERVER_STORAGE, JSON.stringify(known));
   }
 
-  function syncServerState(activeIds, archivedIds) {
+  function syncServerState(activeIds, archivedIds, previous) {
     const current = [...new Set([...(activeIds || []), ...(archivedIds || [])].filter(Boolean).map(String))];
     const currentSet = new Set(current);
-    const previous = readKnownServerIds();
 
     Object.keys(previous).forEach(id => {
       if (!currentSet.has(id)) {
@@ -75,12 +74,15 @@
       clearPending(String(id));
     });
 
-    writeKnownServerIds(current);
+    // A new-note save may finish after this list request started.
+    // Do not mistake that newer ID for a physically deleted Sheet row.
+    const concurrent = Object.keys(readKnownServerIds()).filter(id => !previous[id]);
+    writeKnownServerIds([...current, ...concurrent]);
   }
 
   function isDeleted(id) {
     if (!id) return false;
-    return Object.prototype.hasOwnProperty.call(readDeleted(), String(id));
+    return Boolean(readJsonStorage('lexiNotesPendingDeletesV1', {})[String(id)]) || Object.prototype.hasOwnProperty.call(readDeleted(), String(id));
   }
 
   function clearPending(id) {
@@ -110,6 +112,7 @@
     const id = url.searchParams.get('id') || '';
     if (action === 'get' && isDeleted(id)) return jsonResponse({ ok: false, error: 'Note not found' });
 
+    const knownAtStart = readKnownServerIds();
     const response = await downstreamFetch(input, init);
     if (!response.ok || (action !== 'list' && action !== 'search')) return response;
 
@@ -119,7 +122,7 @@
         if (action === 'list') {
           const activeIds = data.notes.map(note => note && note.ID).filter(Boolean);
           const archivedIds = Array.isArray(data.deletedIds) ? data.deletedIds : [];
-          syncServerState(activeIds, archivedIds);
+          syncServerState(activeIds, archivedIds, knownAtStart);
         }
         data.notes = data.notes.filter(note => !isDeleted(note && note.ID));
         return jsonResponse(data);
@@ -169,8 +172,10 @@
     return response;
   }
 
+  window.lexiNotesIsDeleted = isDeleted;
+
   window.fetch = function guardedFetch(input, init = {}) {
-    const rawUrl = typeof input === 'string' ? input : input && input.url;
+    const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input && input.url;
     const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
     if (!rawUrl) return downstreamFetch(input, init);
 
