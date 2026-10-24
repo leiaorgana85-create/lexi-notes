@@ -23,5 +23,15 @@ function env(store=storage()){
  e=env();e.store.setItem('lexiNotesApiKey','synthetic');e.c.test.queuePending({id:note.ID,title:'Synthetic',body:'Must not return',locked:false});e.setFetch(async()=>Response.json({ok:true,notes:[],deletedIds:[note.ID]}));await e.c.test.load();assert.equal(e.c.test.getNotes().length,0);assert.equal(Object.keys(e.c.test.readPending()).length,0);
  // A new save finishing after a list starts is not a physical purge.
  e=env();let resolve;const wait=new Promise(r=>resolve=r);e.setFetch(async(input,init={})=>{if(init.method==='POST')return Response.json({ok:true});await wait;return Response.json({ok:true,notes:[],deletedIds:[]})});const reading=e.c.fetch(new URL(API+'?action=list'));await e.c.fetch(API,{method:'POST',body:new URLSearchParams({action:'upsert',id:'new-during-read'})});resolve();await reading;assert.equal(e.c.lexiNotesIsDeleted('new-during-read'),false);
+ // Offline note edits survive restart and retain newer content during an acknowledgement.
+ e=env();e.store.setItem('lexiNotesApiKey','synthetic');await e.c.test.load();
+ e.c.navigator.onLine=false;e.c.test.queuePending({id:note.ID,title:'Changed',body:'Offline body',locked:false});
+ const saved=e.store;e=env(saved);assert.equal(e.c.test.getNotes()[0].Body,'Offline body');
+ let releaseSave;e.setFetch(async(input,init={})=>{if(init.method==='POST')await new Promise(r=>releaseSave=r);return Response.json({ok:true})});
+ const sending=e.c.test.flushPending();await new Promise(r=>setImmediate(r));
+ e.c.navigator.onLine=false;e.c.test.queuePending({id:note.ID,title:'Changed',body:'Newer offline body',locked:false});
+ releaseSave();await sending;assert.equal(e.c.test.readPending()[note.ID].body,'Newer offline body');
+ e.c.navigator.onLine=true;e.setFetch(async()=>Response.json({ok:true}));await e.c.test.flushPending();assert.equal(Object.keys(e.c.test.readPending()).length,0);
+ console.log('PASS: offline upsert restart, newer-edit acknowledgement protection and reconnect completion');
  console.log('PASS: offline delete, restart, stale cache, failed-delete retry/error, URL read tombstones, stale-upsert suppression, concurrent-new-note protection');
 })().catch(e=>{console.error(e);process.exitCode=1});
