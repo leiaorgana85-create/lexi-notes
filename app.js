@@ -327,7 +327,10 @@
   window.addEventListener('offline',updateSyncStatus);
   document.addEventListener('visibilitychange',()=>{
     if(document.visibilityState==='hidden'&&dirty)markDirty();
-    if(document.visibilityState==='visible')load(false);
+    if(document.visibilityState==='visible'){
+      window.LexiLifecycle?.mark('data-refresh-start');
+      load(false).finally(()=>window.LexiLifecycle?.mark('data-refresh-end'));
+    }
   });
   window.addEventListener('pagehide',()=>{if(dirty)markDirty()});
   setInterval(()=>{if(document.visibilityState!=='hidden'&&navigator.onLine!==false&&(Object.keys(readPending()).length||Object.keys(readPendingDeletes()).length))load(false)},30000);

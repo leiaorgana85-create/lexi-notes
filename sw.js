@@ -1,5 +1,5 @@
-const CACHE='lexi-notes-standalone-shell-v33';
-const SHELL=['./','./index.html','./styles.css?v=3','./ui-fixes.css?v=3','./write-transport.js?v=2','./sync-guard.js?v=4','./app.js?v=10','./list-position.js?v=2','./ui-fixes.js?v=2','./gestures.js?v=3','./manifest.webmanifest?v=1'];
+const CACHE='lexi-notes-standalone-shell-v34';
+const SHELL=['./lifecycle-diagnostics.js?v=1','./','./index.html','./styles.css?v=3','./ui-fixes.css?v=3','./write-transport.js?v=2','./sync-guard.js?v=4','./app.js?v=11','./list-position.js?v=2','./ui-fixes.js?v=2','./gestures.js?v=3','./manifest.webmanifest?v=1'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('lexi-notes-standalone-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(u.origin!==self.location.origin||!u.pathname.startsWith(new URL('./',self.location.href).pathname))return;e.respondWith(fetch(e.request).then(r=>{if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy))}return r}).catch(()=>caches.open(CACHE).then(c=>c.match(e.request).then(hit=>hit||c.match('./'))))) });
