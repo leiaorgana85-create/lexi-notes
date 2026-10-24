@@ -64,23 +64,33 @@
     if(changed)writePending(pending);
     return merged;
   }
-  async function flushPending(){
+  let pendingFlight=null;
+  function updateSyncStatus(){
+    const count=Object.keys(readPending()).length;
+    syncStatus.textContent=navigator.onLine===false?(count?'Offline · saved on device · sync pending':'Offline · saved notes available'):(count?'Saved on device · sync pending':'Synced');
+  }
+  function flushPending(){
+    if(navigator.onLine===false){updateSyncStatus();return Promise.resolve()}
+    if(pendingFlight)return pendingFlight;
+    pendingFlight=drainPending().finally(()=>{pendingFlight=null;updateSyncStatus()});
+    return pendingFlight;
+  }
+  async function drainPending(){
     const pending=readPending(), entries=Object.entries(pending);
     if(!entries.length)return;
-    for(const [id,p] of entries){
-      const token=p._pendingToken||'';
-      try{await requestPost('upsert',pendingPayload(p));clearPending(id,token)}
-      catch(_){break}
+    for(const [id] of entries){
+      // Re-read after each await: typing may have replaced a queued version.
+      while(navigator.onLine!==false){
+        const p=readPending()[id];if(!p)break;
+        const token=p._pendingToken||'';
+        try{await requestPost('upsert',pendingPayload(p));clearPending(id,token)}
+        catch(_){return}
+      }
     }
   }
   async function flushPendingForId(id){
-    while(true){
-      const p=readPending()[id];
-      if(!p)return;
-      const token=p._pendingToken||'';
-      await requestPost('upsert',pendingPayload(p));
-      clearPending(id,token);
-    }
+    await flushPending();
+    if(readPending()[id])throw new Error('Changes are saved on this device and waiting to sync');
   }
   function formatDate(v){const t=Date.parse(v||'');if(!Number.isFinite(t))return'';return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:new Date(t).getFullYear()===new Date().getFullYear()?undefined:'numeric'}).format(new Date(t))}
   function current(){return notes.find(n=>String(n.ID)===String(activeId))||activeNote}
@@ -149,7 +159,17 @@
   async function unlockActive(){noteInteraction();const pin=sessionPin()||await askPin('unlock');if(!pin)return;try{const d=await requestGet('get',{id:activeId,pin});d.note.Title=cleanTitle(d.note.Title);sessionStorage.setItem(PIN_SESSION,pin);const i=notes.findIndex(n=>String(n.ID)===String(activeId));if(i>=0)notes[i]={...notes[i],...d.note};paintNote(d.note);syncStatus.textContent='Unlocked for this session'}catch(e){sessionStorage.removeItem(PIN_SESSION);showToast(e.message,true)}}
 
   function enterEdit(focusTarget='body'){const n=current();if(!n)return;noteInteraction();readMode.hidden=true;editMode.hidden=false;setToolbarMode('edit');titleInput.value=cleanTitle(n.Title);bodyInput.value=n.Body||'';dirty=false;saveStatus.textContent='';setTimeout(()=>{if(focusTarget==='title'){titleInput.focus();titleInput.setSelectionRange(0,titleInput.value.length)}else{bodyInput.focus();const end=bodyInput.value.length;bodyInput.setSelectionRange(end,end)}},20)}
-  function markDirty(){dirty=true;saveStatus.textContent='Unsaved'}
+  function markDirty(){
+    dirty=true;noteInteraction();
+    const n=current();
+    if(!n||isTrue(n.Locked)){saveStatus.textContent='Unsaved';return}
+    const title=titleInput.value.trim(),body=bodyInput.value.replace(/\r/g,'');
+    if(n._localOnly&&isBlankNote(title,body)){saveStatus.textContent='';return}
+    const now=new Date().toISOString();
+    n.Title=title;n.Body=body;n['Updated At']=now;delete n._localOnly;
+    try{queuePending(payloadForNote(n,now));saveCache();saveStatus.textContent='Saved on device';updateSyncStatus()}
+    catch(_){saveStatus.textContent='Device storage full · keep this note open'}
+  }
   function payloadForNote(n,now){return{id:n.ID,title:String(n.Title||''),body:String(n.Body||''),pinned:isTrue(n.Pinned),locked:isTrue(n.Locked),pin:isTrue(n.Locked)?sessionPin():'',localUpdatedAt:now,createdAt:n['Created At']||now}}
   function captureDraft(){
     const n=current();if(!n||editMode.hidden)return null;
@@ -164,10 +184,12 @@
   }
   function syncDraft(note,payload){
     if(!payload)return;
-    const token=payload.locked?'':queuePending(payload);
+    if(!payload.locked){
+      queuePending(payload);updateSyncStatus();
+      showToast(navigator.onLine===false?'Saved on device · will sync online':'Saved on device');
+      flushPending();return;
+    }
     requestPost('upsert',payload).then(d=>{
-      const latest=payload.locked?true:clearPending(note.ID,token);
-      if(!latest)return;
       note['Updated At']=d.updatedAt||note['Updated At'];saveCache();showToast('Saved');
     }).catch(e=>{showToast(`Save failed: ${e.message}`,true)});
   }
@@ -228,16 +250,17 @@
 
   async function load(show=true){
     const key=localStorage.getItem(KEY_STORAGE);if(!key){showConnect();return}
+    if(navigator.onLine===false){updateSyncStatus();return}
     const startedRevision=interactionRevision;
     if(show)syncStatus.textContent='Refreshing…';
     try{
       const d=await requestGet('list');pinConfigured=Boolean(d.pinConfigured);
-      if(interactionRevision!==startedRevision){syncStatus.textContent='Synced';flushPending();return}
-      notes=mergePending(Array.isArray(d.notes)?d.notes:[]);saveCache();restoreLastView();syncStatus.textContent='Synced';flushPending();
+      if(interactionRevision!==startedRevision||!editMode.hidden){updateSyncStatus();flushPending();return}
+      notes=mergePending(Array.isArray(d.notes)?d.notes:[]);saveCache();restoreLastView();updateSyncStatus();flushPending();
     }catch(e){
       if(e.message==='Unauthorized'){localStorage.removeItem(KEY_STORAGE);showConnect('The API key was not accepted.');return}
       if(interactionRevision!==startedRevision){syncStatus.textContent=`Sync delayed · ${e.message}`;return}
-      const c=readCache();if(c?.notes){notes=c.notes;pinConfigured=Boolean(c.pinConfigured);restoreLastView();syncStatus.textContent=`Using saved index · ${e.message}`}else showConnect(e.message);
+      const c=readCache();if(c?.notes){notes=mergePending(c.notes);pinConfigured=Boolean(c.pinConfigured);restoreLastView();syncStatus.textContent='Saved notes · connection unavailable'}else showConnect(e.message);
     }
   }
 
@@ -267,7 +290,16 @@
   noteView.addEventListener('touchstart',e=>{if(e.touches.length!==1||e.touches[0].clientX>52){swipeStart=null;return}swipeStart={x:e.touches[0].clientX,y:e.touches[0].clientY}}, {passive:true});
   noteView.addEventListener('touchend',e=>{if(!swipeStart||!e.changedTouches.length)return;const t=e.changedTouches[0],dx=t.clientX-swipeStart.x,dy=t.clientY-swipeStart.y;swipeStart=null;if(dx>72&&Math.abs(dy)<58&&dx>Math.abs(dy)*1.35)goBack()}, {passive:true});
 
-  const cached=readCache();if(cached?.notes){notes=cached.notes;pinConfigured=Boolean(cached.pinConfigured);restoreLastView()}
+  const cached=readCache();if(cached?.notes){notes=mergePending(cached.notes);pinConfigured=Boolean(cached.pinConfigured);restoreLastView();updateSyncStatus()}
   if(localStorage.getItem(KEY_STORAGE))load(false);else showConnect();
+  // iOS resumes/reconnects while the app is open; no Background Sync dependency.
+  window.addEventListener('online',()=>load(false));
+  window.addEventListener('offline',updateSyncStatus);
+  document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden'&&dirty)markDirty();
+    if(document.visibilityState==='visible')load(false);
+  });
+  window.addEventListener('pagehide',()=>{if(dirty)markDirty()});
+  setInterval(()=>{if(document.visibilityState!=='hidden'&&navigator.onLine!==false&&Object.keys(readPending()).length)load(false)},30000);
   if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 })();
