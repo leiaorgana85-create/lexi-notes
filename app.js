@@ -277,7 +277,13 @@
   pinCancelBtn.addEventListener('click',()=>finishPin(''));
   pinForm.addEventListener('submit',e=>{e.preventDefault();const p=pinInput.value;if(pinMode==='setup'){if(p.length<4){pinError.textContent='Use at least 4 characters.';return}if(p!==pinConfirmInput.value){pinError.textContent='PINs do not match.';return}}if(!p){pinError.textContent='Enter your PIN.';return}finishPin(p)});
 
-  async function load(show=true){
+  let loadFlight=null;
+  function load(show=true){
+    if(loadFlight)return loadFlight;
+    loadFlight=loadNow(show).finally(()=>{loadFlight=null});
+    return loadFlight;
+  }
+  async function loadNow(show=true){
     const key=localStorage.getItem(KEY_STORAGE);if(!key){showConnect();return}
     if(navigator.onLine===false){updateSyncStatus();return}
     const startedRevision=interactionRevision;

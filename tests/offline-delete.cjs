@@ -32,6 +32,16 @@ function env(store=storage()){
  e.c.navigator.onLine=false;e.c.test.queuePending({id:note.ID,title:'Changed',body:'Newer offline body',locked:false});
  releaseSave();await sending;assert.equal(e.c.test.readPending()[note.ID].body,'Newer offline body');
  e.c.navigator.onLine=true;e.setFetch(async()=>Response.json({ok:true}));await e.c.test.flushPending();assert.equal(Object.keys(e.c.test.readPending()).length,0);
+ // Startup/resume/manual refresh share one in-flight list read, then permit a fresh read.
+ e=env();e.store.setItem('lexiNotesApiKey','synthetic');let listReads=0;const releases=[];
+ e.setFetch(()=>{listReads++;return new Promise(resolve=>releases.push(resolve))});
+ const reads=[e.c.test.load(false),e.c.test.load(false),e.c.test.load(true)];
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(listReads,1);
+ releases.shift()(Response.json({ok:true,notes:[note],deletedIds:[]}));await Promise.all(reads);
+ assert.equal(e.c.test.getNotes().length,1);
+ const retry=e.c.test.load(false);assert.equal(listReads,2);releases.shift()(Response.json({ok:true,notes:[],deletedIds:[]}));await retry;
+ assert.equal(e.c.test.getNotes().length,0);
+ console.log('PASS: overlapping list refreshes coalesce; later refreshes still read canonical state');
  console.log('PASS: offline upsert restart, newer-edit acknowledgement protection and reconnect completion');
  console.log('PASS: offline delete, restart, stale cache, failed-delete retry/error, URL read tombstones, stale-upsert suppression, concurrent-new-note protection');
 })().catch(e=>{console.error(e);process.exitCode=1});
