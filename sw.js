@@ -1,6 +1,6 @@
-// App version: v1.00
-const CACHE='lexi-notes-standalone-shell-v37';
-const SHELL=['./lifecycle-diagnostics.js?v=1','./','./index.html','./styles.css?v=3','./ui-fixes.css?v=3','./write-transport.js?v=2','./sync-guard.js?v=4','./app.js?v=12','./list-position.js?v=2','./ui-fixes.js?v=2','./gestures.js?v=3','./manifest.webmanifest?v=1'];
+// App version: v1.01
+const CACHE='lexi-notes-standalone-shell-v38';
+const SHELL=['./lifecycle-diagnostics.js?v=1','./','./index.html','./styles.css?v=3','./ui-fixes.css?v=3','./backend-auth-recovery.js?v=1','./write-transport.js?v=2','./sync-guard.js?v=4','./app.js?v=12','./list-position.js?v=2','./ui-fixes.js?v=2','./gestures.js?v=3','./manifest.webmanifest?v=1'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL.map(path => new Request(new URL(path, self.location.href), { cache: 'reload' })))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('lexi-notes-standalone-shell-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch', event => {
