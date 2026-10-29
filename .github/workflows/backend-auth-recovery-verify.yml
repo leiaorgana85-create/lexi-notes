@@ -1,0 +1,22 @@
+name: Notes backend auth recovery verification
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check visible app version
+        run: node scripts/check-version.cjs
+      - name: Check recovery helper
+        run: |
+          node --check backend-auth-recovery.js
+          node tests/backend-auth-recovery.cjs
+      - name: Check existing Notes regressions
+        run: |
+          node tests/offline-delete.cjs
+          node tests/startup-latency.cjs
