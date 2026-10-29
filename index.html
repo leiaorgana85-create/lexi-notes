@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-app-version="v1.00">
+<html lang="en" data-app-version="v1.01">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -18,7 +18,7 @@
     <header id="topbar" class="topbar">
       <div class="brand-row">
         <h1 class="brand-title"><svg class="brand-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 8h7M8.5 12h7M8.5 16h5"/></svg><span>Lexi Notes</span></h1>
-        <small id="appVersion" data-version="v1.00" style="display:block;font-size:10px;line-height:1.5;font-weight:400;color:var(--muted,#888);text-align:right;margin:0 0 0 auto;white-space:nowrap">v1.00</small>
+        <small id="appVersion" data-version="v1.01" style="display:block;font-size:10px;line-height:1.5;font-weight:400;color:var(--muted,#888);text-align:right;margin:0 0 0 auto;white-space:nowrap">v1.01</small>
         <button id="refreshBtn" class="icon-btn ghost" type="button" aria-label="Refresh" title="Refresh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
       </div>
       <label class="search-wrap" aria-label="Search all notes">
@@ -40,6 +40,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="pinDialog" class="pin-dialog"><form method="dialog" id="pinForm"><h2 id="pinDialogTitle">Unlock note</h2><p id="pinDialogText">Enter your Lexi Notes PIN.</p><input id="pinInput" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" maxlength="12"><input id="pinConfirmInput" type="password" inputmode="numeric" autocomplete="off" placeholder="Confirm PIN" maxlength="12" hidden><div id="pinError" class="error-text" aria-live="polite"></div><div class="dialog-actions"><button id="pinCancelBtn" class="secondary-btn" type="button">Cancel</button><button id="pinSubmitBtn" class="primary-btn compact" type="submit">Unlock</button></div></form></dialog>
   <script src="./lifecycle-diagnostics.js?v=1" data-app="Lexi Notes" data-build="2026-10-24.lifecycle-1"></script>
+  <script src="backend-auth-recovery.js?v=1" data-backend-url="https://script.google.com/macros/s/AKfycbwsZrm-TgtziRbM7AkJ538pmozw4CNsZA_tGApk6Osz-Sa9IXqvAl_SRbeMvdC-LUWK/exec" data-insert-after="syncStatus" data-retry-button="refreshBtn" data-app-label="Lexi Notes"></script>
   <script src="write-transport.js?v=2"></script>
   <script src="sync-guard.js?v=4"></script>
   <script src="app.js?v=12"></script>
